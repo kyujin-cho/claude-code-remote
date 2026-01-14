@@ -4,12 +4,11 @@ Claude Code hook & Telegram Bot to notify user about active CC permission reques
 
 ## Features
 
-- Intercepts Claude Code permission requests via hooks
-- Sends notifications to Telegram with tool details
-- Inline keyboard buttons for Allow/Deny/Always Allow decisions
-- **Always Allow**: Remember tool preferences for automatic approval
-- **Job Completion Notifications**: Get notified when Claude Code finishes a task
-- Returns decisions back to Claude Code
+- **Permission request notifications** via Telegram with inline keyboards
+- **Always Allow** feature to auto-approve trusted tools
+- **Job completion notifications** when Claude Code finishes
+- **Multi-machine support** with hostname display
+- **Small binary size**: ~4 MB (vs ~50 MB for the archived Python version)
 
 ## Installation
 
@@ -37,12 +36,12 @@ chmod +x claude-code-telegram
 sudo mv claude-code-telegram /usr/local/bin/
 ```
 
-The binary is self-contained with Python bundled - no Python installation required.
-
-### Option B: Install from Source
+### Option B: Build from Source
 
 ```bash
-pip install -e .
+# Requires Rust toolchain (https://rustup.rs)
+cargo build --release
+sudo cp target/release/claude-code-telegram /usr/local/bin/
 ```
 
 ## Setup
@@ -60,25 +59,14 @@ pip install -e .
 
 ### 3. Configure Credentials
 
-**Option A: JSON Configuration File (Recommended)**
-
 Create `~/.claude/telegram_hook.json`:
+
 ```json
 {
   "telegram_bot_token": "your_bot_token_here",
   "telegram_chat_id": "your_chat_id_here"
 }
 ```
-
-**Option B: Environment Variables**
-
-Create `~/.claude/.env` (or set environment variables):
-```
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-TELEGRAM_CHAT_ID=your_chat_id_here
-```
-
-The hook checks for JSON config first, then falls back to environment variables.
 
 ### 4. Configure Claude Code Hooks
 
@@ -133,6 +121,7 @@ Tap a button to respond. The decision is sent back to Claude Code.
 When you click "Always Allow" for a tool, future requests for that tool will be automatically approved. You'll still receive a notification showing what was auto-approved.
 
 Preferences are stored in `~/.claude/always_allow.json`:
+
 ```json
 {
   "tools": ["Bash", "Edit"]
@@ -143,8 +132,6 @@ To reset preferences, delete or edit this file.
 
 ## CLI Commands
 
-After installation, a single `claude-code-telegram` command is available with subcommands:
-
 ```bash
 # Permission request hook handler (used by Claude Code PermissionRequest hooks)
 claude-code-telegram hook
@@ -152,7 +139,7 @@ claude-code-telegram hook
 # Job completion hook handler (used by Claude Code Stop hooks)
 claude-code-telegram stop
 
-# Run the Telegram bot (for /start, /help commands)
+# Run the Telegram bot (for /start, /help, /status commands)
 claude-code-telegram bot
 
 # Show help
@@ -162,43 +149,28 @@ claude-code-telegram --help
 ## Development
 
 ```bash
-# Install development dependencies (using uv)
-uv sync --all-extras
+# Development build
+cargo build
+
+# Release build (optimized)
+cargo build --release
 
 # Run tests
-make test
+cargo test
 
-# Run linting
-make lint
+# Run clippy lints
+cargo clippy --all-targets --all-features -- -D warnings
 
 # Format code
-make format
+cargo fmt
 ```
 
-### Building Self-Executable Binary
+## Cross-Compilation Targets
 
-The project uses [scie-jump](https://github.com/a-scie/jump) via PEX to create self-contained executables with Python bundled.
+- `x86_64-unknown-linux-musl` (Linux x86_64, static)
+- `x86_64-apple-darwin` (macOS Intel)
+- `aarch64-apple-darwin` (macOS Apple Silicon)
 
-```bash
-# Install pex
-pip install pex
+## Archived Python Version
 
-# Build binary (eager mode - ~50MB, works offline)
-make build-scie
-
-# Build binary (lazy mode - ~5MB, fetches Python on first run)
-make build-scie-lazy
-
-# Output: dist/claude-code-telegram
-```
-
-Or use the build script directly:
-```bash
-./scripts/build_scie.sh eager  # or 'lazy'
-```
-
-## Key Technologies
-
-- PermissionRequest (from Claude Code hook)
-- InlineKeyboardButton (from Telegram Bot)
-- [scie-jump](https://github.com/a-scie/jump) + [PEX](https://github.com/pex-tool/pex) for self-contained binaries
+The original Python implementation is preserved in the `archives/` directory for reference. It used PEX/scie-jump to create self-contained binaries but resulted in ~50 MB files. The Rust rewrite achieves the same functionality with ~4 MB binaries.

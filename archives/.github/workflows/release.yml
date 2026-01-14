@@ -10,9 +10,6 @@ on:
 permissions:
   contents: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -20,42 +17,41 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            artifact: claude-code-telegram-linux-x86_64
+            platform: linux-x86_64
+            scie_platform: linux-x86_64
           - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: claude-code-telegram-macos-aarch64
+            platform: macos-aarch64
+            scie_platform: macos-aarch64
           - os: macos-14
-            target: x86_64-apple-darwin
-            artifact: claude-code-telegram-macos-x86_64
+            platform: macos-x86_64
+            scie_platform: macos-x86_64
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          targets: ${{ matrix.target }}
+          python-version: "3.11"
 
-      - name: Install musl tools (Linux)
-        if: contains(matrix.target, 'linux')
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install pex
+        run: pip install pex
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Rename binary
+      - name: Build scie (eager)
         run: |
-          mv target/${{ matrix.target }}/release/claude-code-telegram ${{ matrix.artifact }}
+          mkdir -p dist
+          pex . \
+            --scie eager \
+            --scie-python-version 3.11 \
+            --scie-platform ${{ matrix.scie_platform }} \
+            -c claude-code-telegram \
+            -o dist/claude-code-telegram-${{ matrix.platform }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          name: claude-code-telegram-${{ matrix.platform }}
+          path: dist/claude-code-telegram-${{ matrix.platform }}
 
   release:
     needs: build
@@ -71,9 +67,9 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          for artifact in claude-code-telegram-linux-x86_64 claude-code-telegram-macos-aarch64 claude-code-telegram-macos-x86_64; do
-            cp artifacts/$artifact/$artifact release/
-            chmod +x release/$artifact
+          for platform in linux-x86_64 macos-aarch64 macos-x86_64; do
+            cp artifacts/claude-code-telegram-$platform/claude-code-telegram-$platform release/
+            chmod +x release/claude-code-telegram-$platform
           done
           ls -la release/
 
@@ -83,7 +79,7 @@ jobs:
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
 
-      - name: Upload to release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
