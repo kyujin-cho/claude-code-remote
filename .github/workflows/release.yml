@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: macos-latest
+            platform: macos-aarch64
+          - os: macos-13
+            platform: macos-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pex
+        run: pip install pex
+
+      - name: Build scie (eager)
+        run: |
+          mkdir -p dist
+          pex . \
+            --scie eager \
+            --scie-python-version 3.11 \
+            -c claude-code-telegram-hook \
+            -o dist/claude-code-telegram-hook-${{ matrix.platform }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-code-telegram-hook-${{ matrix.platform }}
+          path: dist/claude-code-telegram-hook-${{ matrix.platform }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          for platform in linux-x86_64 macos-aarch64 macos-x86_64; do
+            cp artifacts/claude-code-telegram-hook-$platform/claude-code-telegram-hook-$platform release/
+            chmod +x release/claude-code-telegram-hook-$platform
+          done
+          ls -la release/
+
+      - name: Create checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/claude-code-telegram-hook-linux-x86_64
+            release/claude-code-telegram-hook-macos-aarch64
+            release/claude-code-telegram-hook-macos-x86_64
+            release/SHA256SUMS
+          generate_release_notes: true

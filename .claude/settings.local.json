@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/kyujin/Projects/Playground/claude-code-decision-telegram-bot status)",
+      "Bash(git -C /Users/kyujin/Projects/Playground/claude-code-decision-telegram-bot log --oneline)",
+      "Bash(bash -c 'git init')",
+      "Bash(pip install:*)"
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-code-decision-telegram-bot"
+version = "0.1.0"
+description = "Claude Code hook & Telegram Bot for permission request handling"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "python-telegram-bot>=21.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+claude-code-telegram-bot = "claude_code_telegram.bot:main"
+claude-code-telegram-hook = "claude_code_telegram.hook_handler:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

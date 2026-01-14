@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": {
+          "tools": ["Bash", "Edit", "Write"]
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-code-telegram-hook"
+          }
+        ]
+      }
+    ]
+  }
+}
