@@ -78,25 +78,22 @@ impl PermissionRequest {
                 }
 
                 if self.tool_name == "Edit" {
-                    if let Some(old_string) = self.tool_input.get("old_string").and_then(|v| v.as_str()) {
+                    if let Some(old_string) =
+                        self.tool_input.get("old_string").and_then(|v| v.as_str())
+                    {
                         let truncated: String = old_string.chars().take(200).collect();
-                        lines.push(format!(
-                            "*Old:*\n```\n{}\n```",
-                            escape_markdown(&truncated)
-                        ));
+                        lines.push(format!("*Old:*\n```\n{}\n```", escape_markdown(&truncated)));
                     }
-                    if let Some(new_string) = self.tool_input.get("new_string").and_then(|v| v.as_str()) {
+                    if let Some(new_string) =
+                        self.tool_input.get("new_string").and_then(|v| v.as_str())
+                    {
                         let truncated: String = new_string.chars().take(200).collect();
-                        lines.push(format!(
-                            "*New:*\n```\n{}\n```",
-                            escape_markdown(&truncated)
-                        ));
+                        lines.push(format!("*New:*\n```\n{}\n```", escape_markdown(&truncated)));
                     }
                 }
             }
             _ => {
-                let input_str = serde_json::to_string_pretty(&self.tool_input)
-                    .unwrap_or_default();
+                let input_str = serde_json::to_string_pretty(&self.tool_input).unwrap_or_default();
                 let truncated: String = input_str.chars().take(500).collect();
                 lines.push(format!(
                     "*Input:*\n```json\n{}\n```",
@@ -174,8 +171,7 @@ async fn send_auto_approved_notification(
             }
         }
         _ => {
-            let input_str = serde_json::to_string_pretty(&request.tool_input)
-                .unwrap_or_default();
+            let input_str = serde_json::to_string_pretty(&request.tool_input).unwrap_or_default();
             let truncated: String = input_str.chars().take(500).collect();
             lines.push(format!(
                 "*Input:*\n```json\n{}\n```",
@@ -212,7 +208,10 @@ pub async fn handle_permission_request(
     // Send message with inline keyboard
     let keyboard = create_permission_keyboard(&request.request_id, &request.tool_name);
     let message = bot
-        .send_message(config.telegram_chat_id, request.format_message(Some(&config.hostname)))
+        .send_message(
+            config.telegram_chat_id,
+            request.format_message(Some(&config.hostname)),
+        )
         .parse_mode(ParseMode::MarkdownV2)
         .reply_markup(keyboard)
         .await?;
@@ -229,8 +228,8 @@ pub async fn handle_permission_request(
 
     // Spawn callback query handler
     let handler = tokio::spawn(async move {
-        let handler = Update::filter_callback_query().endpoint(
-            move |bot: Bot, q: CallbackQuery| {
+        let handler =
+            Update::filter_callback_query().endpoint(move |bot: Bot, q: CallbackQuery| {
                 let request_id = request_id.clone();
                 let tool_name = tool_name.clone();
                 let always_allow = always_allow_clone.clone();
@@ -252,19 +251,16 @@ pub async fn handle_permission_request(
                                 let status = match callback.decision {
                                     Decision::Allow => "✅ Approved",
                                     Decision::Deny => "❌ Denied",
-                                    Decision::AlwaysAllow => {
-                                        &format!("🔓 Always Allowed \\(`{}` added to list\\)",
-                                            escape_markdown(&tool_name))
-                                    }
+                                    Decision::AlwaysAllow => &format!(
+                                        "🔓 Always Allowed \\(`{}` added to list\\)",
+                                        escape_markdown(&tool_name)
+                                    ),
                                 };
 
                                 // Update message
                                 if let Some(msg) = q.message {
-                                    let new_text = format!(
-                                        "{}\n\n*Status:* {}",
-                                        original_message,
-                                        status
-                                    );
+                                    let new_text =
+                                        format!("{}\n\n*Status:* {}", original_message, status);
                                     let _ = bot
                                         .edit_message_text(msg.chat().id, msg.id(), new_text)
                                         .parse_mode(ParseMode::MarkdownV2)
@@ -288,8 +284,7 @@ pub async fn handle_permission_request(
                     }
                     Ok::<_, teloxide::RequestError>(())
                 }
-            },
-        );
+            });
 
         Dispatcher::builder(bot_clone, handler)
             .enable_ctrlc_handler()
@@ -422,18 +417,12 @@ mod tests {
     #[test]
     fn test_create_hook_response_allow() {
         let response = create_hook_response(Decision::Allow);
-        assert_eq!(
-            response.hook_specific_output.decision.behavior,
-            "allow"
-        );
+        assert_eq!(response.hook_specific_output.decision.behavior, "allow");
     }
 
     #[test]
     fn test_create_hook_response_deny() {
         let response = create_hook_response(Decision::Deny);
-        assert_eq!(
-            response.hook_specific_output.decision.behavior,
-            "deny"
-        );
+        assert_eq!(response.hook_specific_output.decision.behavior, "deny");
     }
 }

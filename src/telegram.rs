@@ -28,14 +28,8 @@ impl Decision {
 pub fn create_permission_keyboard(request_id: &str, tool_name: &str) -> InlineKeyboardMarkup {
     let buttons = vec![
         vec![
-            InlineKeyboardButton::callback(
-                "✅ Allow",
-                format!("{}:allow", request_id),
-            ),
-            InlineKeyboardButton::callback(
-                "❌ Deny",
-                format!("{}:deny", request_id),
-            ),
+            InlineKeyboardButton::callback("✅ Allow", format!("{}:allow", request_id)),
+            InlineKeyboardButton::callback("❌ Deny", format!("{}:deny", request_id)),
         ],
         vec![InlineKeyboardButton::callback(
             "🔓 Always Allow",
@@ -87,7 +81,9 @@ pub fn parse_callback_data(data: &str) -> Option<CallbackData> {
 
 /// Escape special characters for Telegram MarkdownV2 format.
 pub fn escape_markdown(text: &str) -> String {
-    let special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
+    let special_chars = [
+        '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!',
+    ];
     let mut result = String::with_capacity(text.len() * 2);
 
     for c in text.chars() {

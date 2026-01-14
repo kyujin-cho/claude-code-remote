@@ -45,10 +45,9 @@ enum ChatIdValue {
 impl ChatIdValue {
     fn to_chat_id(&self) -> Result<ChatId, ConfigError> {
         match self {
-            ChatIdValue::String(s) => s
-                .parse::<i64>()
-                .map(ChatId)
-                .map_err(|_| ConfigError::MissingField("telegram_chat_id must be a valid integer".to_string())),
+            ChatIdValue::String(s) => s.parse::<i64>().map(ChatId).map_err(|_| {
+                ConfigError::MissingField("telegram_chat_id must be a valid integer".to_string())
+            }),
             ChatIdValue::Integer(i) => Ok(ChatId(*i)),
         }
     }
@@ -111,10 +110,9 @@ impl Config {
         let chat_id_str = env::var("TELEGRAM_CHAT_ID")
             .map_err(|_| ConfigError::MissingEnvVar("TELEGRAM_CHAT_ID".to_string()))?;
 
-        let chat_id = chat_id_str
-            .parse::<i64>()
-            .map(ChatId)
-            .map_err(|_| ConfigError::MissingField("TELEGRAM_CHAT_ID must be a valid integer".to_string()))?;
+        let chat_id = chat_id_str.parse::<i64>().map(ChatId).map_err(|_| {
+            ConfigError::MissingField("TELEGRAM_CHAT_ID must be a valid integer".to_string())
+        })?;
 
         let hostname = hostname::get()
             .map(|h| h.to_string_lossy().to_string())
