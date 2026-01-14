@@ -79,6 +79,7 @@ impl AlwaysAllowManager {
     }
 
     /// Remove a tool from the always-allow list.
+    #[allow(dead_code)]
     pub fn remove_tool(&self, tool_name: &str) -> Result<(), AlwaysAllowError> {
         let mut data = self.read_data();
         data.tools.retain(|t| t != tool_name);
@@ -87,11 +88,13 @@ impl AlwaysAllowManager {
     }
 
     /// Get the list of always-allowed tools.
+    #[allow(dead_code)]
     pub fn get_allowed_tools(&self) -> Vec<String> {
         self.read_data().tools
     }
 
     /// Clear all always-allow preferences.
+    #[allow(dead_code)]
     pub fn clear(&self) -> Result<(), AlwaysAllowError> {
         let data = AlwaysAllowData::default();
         self.write_data(&data)?;

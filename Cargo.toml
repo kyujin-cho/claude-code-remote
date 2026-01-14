@@ -11,7 +11,7 @@ name = "claude-code-telegram"
 path = "src/main.rs"
 
 [dependencies]
-teloxide = { version = "0.13", features = ["macros"] }
+teloxide = { version = "0.13", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
 tokio = { version = "1", features = ["full", "signal"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

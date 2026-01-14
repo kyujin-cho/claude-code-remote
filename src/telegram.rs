@@ -14,7 +14,7 @@ pub enum Decision {
 
 impl Decision {
     /// Convert decision to Claude Code hook behavior string.
-    pub fn to_behavior(&self) -> &'static str {
+    pub fn to_behavior(self) -> &'static str {
         match self {
             Decision::Allow | Decision::AlwaysAllow => "allow",
             Decision::Deny => "deny",

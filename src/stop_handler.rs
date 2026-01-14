@@ -29,6 +29,7 @@ pub struct StopInput {
 /// Stop event with parsed data.
 #[derive(Debug)]
 pub struct StopEvent {
+    #[allow(dead_code)]
     pub session_id: String,
     pub transcript_path: PathBuf,
     pub cwd: PathBuf,
@@ -61,7 +62,7 @@ impl StopEvent {
 
         let mut last_message: Option<String> = None;
 
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             if let Ok(entry) = serde_json::from_str::<TranscriptEntry>(&line) {
                 if entry.entry_type == "assistant" {
                     if let Some(message) = entry.message {
