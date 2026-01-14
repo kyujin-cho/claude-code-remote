@@ -10,12 +10,10 @@ use crate::telegram::{create_permission_keyboard, escape_markdown, parse_callbac
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{self, Read};
-use std::sync::Arc;
 use std::time::Duration;
 use teloxide::prelude::*;
-use teloxide::types::ParseMode;
-use tokio::sync::oneshot;
-use tokio::time::timeout;
+use teloxide::types::{ParseMode, UpdateKind};
+use tokio::time::{interval, timeout};
 
 /// Claude Code hook input for permission requests.
 #[derive(Debug, Deserialize)]
@@ -188,6 +186,9 @@ async fn send_auto_approved_notification(
 }
 
 /// Handle a permission request and wait for user decision.
+///
+/// Uses manual getUpdates polling to avoid conflicts when multiple
+/// permission requests are active simultaneously.
 pub async fn handle_permission_request(
     config: &Config,
     always_allow: &AlwaysAllowManager,
@@ -201,136 +202,140 @@ pub async fn handle_permission_request(
         return Ok(Decision::Allow);
     }
 
-    // Create channel for decision signaling
-    let (tx, rx) = oneshot::channel::<Decision>();
-    let tx = Arc::new(tokio::sync::Mutex::new(Some(tx)));
-
     // Send message with inline keyboard
     let keyboard = create_permission_keyboard(&request.request_id, &request.tool_name);
+    let original_message = request.format_message(Some(&config.hostname));
     let message = bot
-        .send_message(
-            config.telegram_chat_id,
-            request.format_message(Some(&config.hostname)),
-        )
+        .send_message(config.telegram_chat_id, &original_message)
         .parse_mode(ParseMode::MarkdownV2)
         .reply_markup(keyboard)
         .await?;
 
-    // Clone values for the callback handler
-    let request_id = request.request_id.clone();
-    let tool_name = request.tool_name.clone();
-    let always_allow_clone = always_allow.clone();
-    let tx_clone = Arc::clone(&tx);
-    let bot_clone = bot.clone();
+    let message_id = message.id;
     let chat_id = config.telegram_chat_id;
-    let hostname = config.hostname.clone();
-    let original_message = request.format_message(Some(&hostname));
 
-    // Spawn callback query handler
-    let handler = tokio::spawn(async move {
-        let handler =
-            Update::filter_callback_query().endpoint(move |bot: Bot, q: CallbackQuery| {
-                let request_id = request_id.clone();
-                let tool_name = tool_name.clone();
-                let always_allow = always_allow_clone.clone();
-                let tx = Arc::clone(&tx_clone);
-                let original_message = original_message.clone();
+    // Poll for callback query with timeout
+    let poll_result = timeout(
+        Duration::from_secs(300),
+        poll_for_callback(&bot, &request.request_id, message_id, chat_id),
+    )
+    .await;
 
-                async move {
-                    if let Some(data) = &q.data {
-                        if let Some(callback) = parse_callback_data(data) {
-                            if callback.request_id == request_id {
-                                // Handle always allow
-                                if callback.decision == Decision::AlwaysAllow {
-                                    if let Some(tool) = &callback.tool_name {
-                                        let _ = always_allow.add_tool(tool);
-                                    }
-                                }
+    match poll_result {
+        Ok(Ok(callback_decision)) => {
+            // Handle always allow
+            if callback_decision == Decision::AlwaysAllow {
+                let _ = always_allow.add_tool(&request.tool_name);
+            }
 
-                                // Determine status text
-                                let status = match callback.decision {
-                                    Decision::Allow => "✅ Approved",
-                                    Decision::Deny => "❌ Denied",
-                                    Decision::AlwaysAllow => &format!(
-                                        "🔓 Always Allowed \\(`{}` added to list\\)",
-                                        escape_markdown(&tool_name)
-                                    ),
-                                };
+            // Determine status text
+            let status = match callback_decision {
+                Decision::Allow => "✅ Approved".to_string(),
+                Decision::Deny => "❌ Denied".to_string(),
+                Decision::AlwaysAllow => format!(
+                    "🔓 Always Allowed \\(`{}` added to list\\)",
+                    escape_markdown(&request.tool_name)
+                ),
+            };
 
-                                // Update message
-                                if let Some(msg) = q.message {
-                                    let new_text =
-                                        format!("{}\n\n*Status:* {}", original_message, status);
-                                    let _ = bot
-                                        .edit_message_text(msg.chat().id, msg.id(), new_text)
-                                        .parse_mode(ParseMode::MarkdownV2)
-                                        .await;
-                                }
+            // Update message with status
+            let new_text = format!("{}\n\n*Status:* {}", original_message, status);
+            let _ = bot
+                .edit_message_text(chat_id, message_id, new_text)
+                .parse_mode(ParseMode::MarkdownV2)
+                .await;
 
-                                // Answer callback query
-                                let _ = bot.answer_callback_query(&q.id).await;
-
-                                // Send decision
-                                if let Some(sender) = tx.lock().await.take() {
-                                    let decision = if callback.decision == Decision::AlwaysAllow {
-                                        Decision::Allow
-                                    } else {
-                                        callback.decision
-                                    };
-                                    let _ = sender.send(decision);
-                                }
-                            }
-                        }
-                    }
-                    Ok::<_, teloxide::RequestError>(())
-                }
-            });
-
-        Dispatcher::builder(bot_clone, handler)
-            .enable_ctrlc_handler()
-            .build()
-            .dispatch()
-            .await;
-    });
-
-    // Wait for decision with timeout
-    let result = timeout(Duration::from_secs(300), rx).await;
-
-    // Stop the dispatcher
-    handler.abort();
-
-    match result {
-        Ok(Ok(decision)) => Ok(decision),
-        Ok(Err(_)) => {
-            // Channel closed without decision
-            // Update message to show timeout
+            // Return allow for AlwaysAllow
+            if callback_decision == Decision::AlwaysAllow {
+                Ok(Decision::Allow)
+            } else {
+                Ok(callback_decision)
+            }
+        }
+        Ok(Err(e)) => {
+            // Error during polling
             let _ = bot
                 .edit_message_text(
                     chat_id,
-                    message.id,
-                    format!(
-                        "{}\n\n*Status:* ⏱️ Timeout \\- Denied",
-                        request.format_message(Some(&hostname))
-                    ),
+                    message_id,
+                    format!("{}\n\n*Status:* ❌ Error", original_message),
                 )
                 .parse_mode(ParseMode::MarkdownV2)
                 .await;
-            Ok(Decision::Deny)
+            Err(e)
         }
         Err(_) => {
             // Timeout
             let _ = bot
                 .edit_message_text(
                     chat_id,
-                    message.id,
-                    format!(
-                        "{}\n\n*Status:* ⏱️ Timeout \\- Denied",
-                        request.format_message(Some(&hostname))
-                    ),
+                    message_id,
+                    format!("{}\n\n*Status:* ⏱️ Timeout \\- Denied", original_message),
                 )
                 .parse_mode(ParseMode::MarkdownV2)
                 .await;
             Ok(Decision::Deny)
+        }
+    }
+}
+
+/// Poll for callback query matching our request.
+///
+/// This uses manual getUpdates polling with message_id filtering to avoid
+/// conflicts with other concurrent permission requests.
+async fn poll_for_callback(
+    bot: &Bot,
+    request_id: &str,
+    message_id: teloxide::types::MessageId,
+    chat_id: teloxide::types::ChatId,
+) -> Result<Decision, HookError> {
+    let mut poll_interval = interval(Duration::from_millis(500));
+    let mut offset: Option<i32> = None;
+
+    loop {
+        poll_interval.tick().await;
+
+        // Build getUpdates request
+        let mut get_updates = bot.get_updates();
+        if let Some(off) = offset {
+            get_updates = get_updates.offset(off);
+        }
+        get_updates = get_updates.timeout(5);
+        get_updates =
+            get_updates.allowed_updates(vec![teloxide::types::AllowedUpdate::CallbackQuery]);
+
+        let updates = match get_updates.await {
+            Ok(updates) => updates,
+            Err(_) => continue, // Retry on error
+        };
+
+        for update in updates {
+            // Update offset for next poll
+            offset = Some((update.id.0 + 1) as i32);
+
+            // Check if this is a callback query
+            if let UpdateKind::CallbackQuery(query) = update.kind {
+                // Check if callback is for our message
+                if let Some(msg) = &query.message {
+                    if msg.chat().id != chat_id || msg.id() != message_id {
+                        continue; // Not our message
+                    }
+                } else {
+                    continue; // No message info
+                }
+
+                // Parse callback data
+                if let Some(data) = &query.data {
+                    if let Some(callback) = parse_callback_data(data) {
+                        if callback.request_id == request_id {
+                            // Answer callback query to remove loading state
+                            let _ = bot.answer_callback_query(&query.id).await;
+
+                            return Ok(callback.decision);
+                        }
+                    }
+                }
+            }
         }
     }
 }

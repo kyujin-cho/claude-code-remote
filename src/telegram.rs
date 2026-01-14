@@ -45,6 +45,7 @@ pub fn create_permission_keyboard(request_id: &str, tool_name: &str) -> InlineKe
 pub struct CallbackData {
     pub request_id: String,
     pub decision: Decision,
+    #[allow(dead_code)]
     pub tool_name: Option<String>,
 }
 
