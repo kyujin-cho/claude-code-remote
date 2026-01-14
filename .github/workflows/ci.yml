@@ -43,10 +43,13 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
+            scie_platform: linux-x86_64
           - os: macos-latest
             platform: macos-aarch64
-          - os: macos-13
+            scie_platform: macos-aarch64
+          - os: macos-14
             platform: macos-x86_64
+            scie_platform: macos-x86_64
 
     steps:
       - uses: actions/checkout@v4
@@ -65,10 +68,12 @@ jobs:
           pex . \
             --scie eager \
             --scie-python-version 3.11 \
+            --scie-platform ${{ matrix.scie_platform }} \
             -c claude-code-telegram-hook \
             -o dist/claude-code-telegram-hook-${{ matrix.platform }}
 
       - name: Test binary
+        if: matrix.os != 'macos-14' || matrix.platform != 'macos-x86_64'
         run: |
           echo '{"tool_name": "test"}' | timeout 5 dist/claude-code-telegram-hook-${{ matrix.platform }} || true
           # Expected to fail (no Telegram token), but should at least start
