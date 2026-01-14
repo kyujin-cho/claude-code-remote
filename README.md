@@ -19,22 +19,22 @@ Download the latest release for your platform:
 
 ```bash
 # macOS (Apple Silicon)
-curl -L -o claude-code-telegram-hook \
-  https://github.com/kyujin-cho/claude-code-remote/releases/latest/download/claude-code-telegram-hook-macos-aarch64
-chmod +x claude-code-telegram-hook
-sudo mv claude-code-telegram-hook /usr/local/bin/
+curl -L -o claude-code-telegram \
+  https://github.com/kyujin-cho/claude-code-remote/releases/latest/download/claude-code-telegram-macos-aarch64
+chmod +x claude-code-telegram
+sudo mv claude-code-telegram /usr/local/bin/
 
 # macOS (Intel)
-curl -L -o claude-code-telegram-hook \
-  https://github.com/kyujin-cho/claude-code-remote/releases/latest/download/claude-code-telegram-hook-macos-x86_64
-chmod +x claude-code-telegram-hook
-sudo mv claude-code-telegram-hook /usr/local/bin/
+curl -L -o claude-code-telegram \
+  https://github.com/kyujin-cho/claude-code-remote/releases/latest/download/claude-code-telegram-macos-x86_64
+chmod +x claude-code-telegram
+sudo mv claude-code-telegram /usr/local/bin/
 
 # Linux (x86_64)
-curl -L -o claude-code-telegram-hook \
-  https://github.com/kyujin-cho/claude-code-remote/releases/latest/download/claude-code-telegram-hook-linux-x86_64
-chmod +x claude-code-telegram-hook
-sudo mv claude-code-telegram-hook /usr/local/bin/
+curl -L -o claude-code-telegram \
+  https://github.com/kyujin-cho/claude-code-remote/releases/latest/download/claude-code-telegram-linux-x86_64
+chmod +x claude-code-telegram
+sudo mv claude-code-telegram /usr/local/bin/
 ```
 
 The binary is self-contained with Python bundled - no Python installation required.
@@ -95,7 +95,7 @@ Add to your `~/.claude/settings.json` or project `.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "claude-code-telegram-hook"
+            "command": "claude-code-telegram hook"
           }
         ]
       }
@@ -106,7 +106,7 @@ Add to your `~/.claude/settings.json` or project `.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "claude-code-telegram-stop"
+            "command": "claude-code-telegram stop"
           }
         ]
       }
@@ -143,17 +143,20 @@ To reset preferences, delete or edit this file.
 
 ## CLI Commands
 
-After installation, these commands are available:
+After installation, a single `claude-code-telegram` command is available with subcommands:
 
 ```bash
 # Permission request hook handler (used by Claude Code PermissionRequest hooks)
-claude-code-telegram-hook
+claude-code-telegram hook
 
 # Job completion hook handler (used by Claude Code Stop hooks)
-claude-code-telegram-stop
+claude-code-telegram stop
 
 # Run the Telegram bot (for /start, /help commands)
-claude-code-telegram-bot
+claude-code-telegram bot
+
+# Show help
+claude-code-telegram --help
 ```
 
 ## Development
@@ -186,7 +189,7 @@ make build-scie
 # Build binary (lazy mode - ~5MB, fetches Python on first run)
 make build-scie-lazy
 
-# Output: dist/claude-code-telegram-hook
+# Output: dist/claude-code-telegram
 ```
 
 Or use the build script directly:

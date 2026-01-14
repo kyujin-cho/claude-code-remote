@@ -69,17 +69,17 @@ jobs:
             --scie eager \
             --scie-python-version 3.11 \
             --scie-platform ${{ matrix.scie_platform }} \
-            -c claude-code-telegram-hook \
-            -o dist/claude-code-telegram-hook-${{ matrix.platform }}
+            -c claude-code-telegram \
+            -o dist/claude-code-telegram-${{ matrix.platform }}
 
       - name: Test binary
         if: matrix.os != 'macos-14' || matrix.platform != 'macos-x86_64'
         run: |
-          echo '{"tool_name": "test"}' | timeout 5 dist/claude-code-telegram-hook-${{ matrix.platform }} || true
+          echo '{"tool_name": "test"}' | timeout 5 dist/claude-code-telegram-${{ matrix.platform }} || true
           # Expected to fail (no Telegram token), but should at least start
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: claude-code-telegram-hook-${{ matrix.platform }}
-          path: dist/claude-code-telegram-hook-${{ matrix.platform }}
+          name: claude-code-telegram-${{ matrix.platform }}
+          path: dist/claude-code-telegram-${{ matrix.platform }}

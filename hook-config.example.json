@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "claude-code-telegram-hook"
+            "command": "claude-code-telegram hook"
           }
         ]
       }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "claude-code-telegram-stop"
+            "command": "claude-code-telegram stop"
           }
         ]
       }

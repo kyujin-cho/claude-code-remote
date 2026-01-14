@@ -44,14 +44,14 @@ jobs:
             --scie eager \
             --scie-python-version 3.11 \
             --scie-platform ${{ matrix.scie_platform }} \
-            -c claude-code-telegram-hook \
-            -o dist/claude-code-telegram-hook-${{ matrix.platform }}
+            -c claude-code-telegram \
+            -o dist/claude-code-telegram-${{ matrix.platform }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: claude-code-telegram-hook-${{ matrix.platform }}
-          path: dist/claude-code-telegram-hook-${{ matrix.platform }}
+          name: claude-code-telegram-${{ matrix.platform }}
+          path: dist/claude-code-telegram-${{ matrix.platform }}
 
   release:
     needs: build
@@ -68,8 +68,8 @@ jobs:
         run: |
           mkdir -p release
           for platform in linux-x86_64 macos-aarch64 macos-x86_64; do
-            cp artifacts/claude-code-telegram-hook-$platform/claude-code-telegram-hook-$platform release/
-            chmod +x release/claude-code-telegram-hook-$platform
+            cp artifacts/claude-code-telegram-$platform/claude-code-telegram-$platform release/
+            chmod +x release/claude-code-telegram-$platform
           done
           ls -la release/
 
@@ -83,8 +83,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/claude-code-telegram-hook-linux-x86_64
-            release/claude-code-telegram-hook-macos-aarch64
-            release/claude-code-telegram-hook-macos-x86_64
+            release/claude-code-telegram-linux-x86_64
+            release/claude-code-telegram-macos-aarch64
+            release/claude-code-telegram-macos-x86_64
             release/SHA256SUMS
           generate_release_notes: true

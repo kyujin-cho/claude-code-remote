@@ -33,10 +33,10 @@ build-scie: $(DIST_DIR)
 	$(PEX) . \
 		--scie eager \
 		--scie-python-version 3.11 \
-		-c claude-code-telegram-hook \
-		-o $(DIST_DIR)/claude-code-telegram-hook
-	@echo "Built: $(DIST_DIR)/claude-code-telegram-hook"
-	@du -h $(DIST_DIR)/claude-code-telegram-hook
+		-c claude-code-telegram \
+		-o $(DIST_DIR)/claude-code-telegram
+	@echo "Built: $(DIST_DIR)/claude-code-telegram"
+	@du -h $(DIST_DIR)/claude-code-telegram
 
 # Build self-executable that fetches Python on first run (~5MB)
 build-scie-lazy: $(DIST_DIR)
@@ -44,10 +44,10 @@ build-scie-lazy: $(DIST_DIR)
 	$(PEX) . \
 		--scie lazy \
 		--scie-python-version 3.11 \
-		-c claude-code-telegram-hook \
-		-o $(DIST_DIR)/claude-code-telegram-hook
-	@echo "Built: $(DIST_DIR)/claude-code-telegram-hook"
-	@du -h $(DIST_DIR)/claude-code-telegram-hook
+		-c claude-code-telegram \
+		-o $(DIST_DIR)/claude-code-telegram
+	@echo "Built: $(DIST_DIR)/claude-code-telegram"
+	@du -h $(DIST_DIR)/claude-code-telegram
 
 $(DIST_DIR):
 	mkdir -p $(DIST_DIR)
