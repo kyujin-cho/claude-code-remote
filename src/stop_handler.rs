@@ -1,17 +1,19 @@
 //! Stop handler for job completion notifications.
 //!
-//! Handles Stop hook events by sending Telegram notifications
+//! Handles Stop hook events by sending notifications via configured messengers
 //! when Claude Code finishes a task.
 
 use crate::config::Config;
 use crate::error::StopError;
-use crate::telegram::escape_markdown;
+use crate::messenger::telegram::TelegramMessenger;
+use crate::messenger::Messenger;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
-use teloxide::prelude::*;
-use teloxide::types::ParseMode;
+
+#[cfg(feature = "discord")]
+use crate::messenger::discord::DiscordMessenger;
 
 /// Claude Code stop hook input.
 #[derive(Debug, Deserialize)]
@@ -112,46 +114,87 @@ enum ContentBlock {
     Other,
 }
 
-/// Send job completion notification.
-pub async fn send_notification(config: &Config, event: &StopEvent) -> Result<(), StopError> {
-    // Skip if this is a continuation from a stop hook to prevent loops
-    if event.stop_hook_active {
-        return Ok(());
-    }
-
-    // Require telegram config for now (stop notifications only support telegram)
-    let telegram_config = match &config.telegram {
-        Some(tc) => tc,
-        None => return Ok(()), // Silently skip if telegram not configured
-    };
-
-    let bot = Bot::new(&telegram_config.bot_token);
-
+/// Format job completion message.
+fn format_completion_message(config: &Config, event: &StopEvent) -> String {
     let project_name = event.get_project_name();
 
-    // Build message
     let mut lines = vec![
-        "✅ *Job Completed*".to_string(),
-        format!("🖥️ *Host:* `{}`", escape_markdown(&config.hostname)),
-        format!("📁 *Project:* `{}`", escape_markdown(&project_name)),
+        "✅ **Job Completed**".to_string(),
+        format!("🖥️ **Host:** {}", config.hostname),
+        format!("📁 **Project:** {}", project_name),
     ];
 
     // Try to get last assistant message for summary
     if let Some(last_message) = event.get_last_assistant_message() {
         let truncated: String = last_message.chars().take(300).collect();
         let summary = if last_message.len() > 300 {
-            format!("{}\\.\\.\\.", escape_markdown(&truncated))
+            format!("{}...", truncated)
         } else {
-            escape_markdown(&truncated)
+            truncated
         };
         lines.push(String::new());
-        lines.push(format!("*Summary:*\n{}", summary));
+        lines.push(format!("**Summary:**\n{}", summary));
     }
 
-    bot.send_message(telegram_config.chat_id, lines.join("\n"))
-        .parse_mode(ParseMode::MarkdownV2)
-        .await?;
+    lines.join("\n")
+}
 
+/// Send job completion notification via configured messenger.
+pub async fn send_notification(config: &Config, event: &StopEvent) -> Result<(), StopError> {
+    // Skip if this is a continuation from a stop hook to prevent loops
+    if event.stop_hook_active {
+        return Ok(());
+    }
+
+    let text = format_completion_message(config, event);
+
+    // Try Discord if configured as primary
+    #[cfg(feature = "discord")]
+    if config.primary_messenger == "discord" {
+        if let Some(ref discord_config) = config.discord {
+            if discord_config.enabled {
+                let messenger =
+                    DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
+                messenger
+                    .send_notification(&text)
+                    .await
+                    .map_err(|e| StopError::TelegramError(teloxide::RequestError::Api(
+                        teloxide::ApiError::Unknown(e.to_string()),
+                    )))?;
+                return Ok(());
+            }
+        }
+    }
+
+    // Try Telegram if configured
+    if let Some(ref telegram_config) = config.telegram {
+        let messenger = TelegramMessenger::new(&telegram_config.bot_token, telegram_config.chat_id);
+        messenger
+            .send_notification(&text)
+            .await
+            .map_err(|e| StopError::TelegramError(teloxide::RequestError::Api(
+                teloxide::ApiError::Unknown(e.to_string()),
+            )))?;
+        return Ok(());
+    }
+
+    // Try Discord as fallback
+    #[cfg(feature = "discord")]
+    if let Some(ref discord_config) = config.discord {
+        if discord_config.enabled {
+            let messenger =
+                DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
+            messenger
+                .send_notification(&text)
+                .await
+                .map_err(|e| StopError::TelegramError(teloxide::RequestError::Api(
+                    teloxide::ApiError::Unknown(e.to_string()),
+                )))?;
+            return Ok(());
+        }
+    }
+
+    // No messenger configured - silently skip
     Ok(())
 }
 

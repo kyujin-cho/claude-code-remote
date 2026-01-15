@@ -6,10 +6,11 @@ use std::path::PathBuf;
 
 /// Claude Code hook & messaging integration.
 ///
-/// Supports Telegram (default) and Signal (with --features signal).
+/// Supports Telegram (default), Discord (with --features discord),
+/// and Signal (with --features signal).
 #[derive(Parser)]
 #[command(name = "claude-code-telegram")]
-#[command(about = "Claude Code hook & messaging integration (Telegram, Signal)")]
+#[command(about = "Claude Code hook & messaging integration (Telegram, Discord, Signal)")]
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]
@@ -24,6 +25,15 @@ pub enum Commands {
 
     /// Handle Stop hooks for job completion notifications (reads from stdin)
     Stop,
+
+    /// Handle Notification hooks for relaying Claude Code notifications (reads from stdin)
+    Notify,
+
+    /// Send a custom message to configured messengers
+    Relay {
+        /// Message to send
+        message: String,
+    },
 
     /// Run the Telegram bot for /start, /help, /status commands
     Bot,

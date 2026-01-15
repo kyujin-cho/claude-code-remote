@@ -9,6 +9,7 @@ mod config;
 mod error;
 mod hook_handler;
 mod messenger;
+mod notification_handler;
 mod stop_handler;
 mod telegram;
 
@@ -16,6 +17,11 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use cli::{Cli, Commands};
 use config::Config;
+
+#[cfg(feature = "discord")]
+use messenger::discord::DiscordMessenger;
+use messenger::telegram::TelegramMessenger;
+use messenger::Messenger;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -39,6 +45,16 @@ async fn main() -> Result<()> {
             stop_handler::run()
                 .await
                 .context("Failed to handle stop event")?;
+        }
+        Commands::Notify => {
+            notification_handler::run()
+                .await
+                .context("Failed to handle notification")?;
+        }
+        Commands::Relay { message } => {
+            relay_message(&message)
+                .await
+                .context("Failed to relay message")?;
         }
         Commands::Bot => {
             bot::run().await.context("Failed to run Telegram bot")?;
@@ -70,6 +86,44 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Relay a custom message to configured messengers.
+async fn relay_message(message: &str) -> Result<()> {
+    let config = Config::load(None)?;
+
+    // Try Discord if configured as primary
+    #[cfg(feature = "discord")]
+    if config.primary_messenger == "discord" {
+        if let Some(ref discord_config) = config.discord {
+            if discord_config.enabled {
+                let messenger =
+                    DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
+                messenger.send_notification(message).await?;
+                return Ok(());
+            }
+        }
+    }
+
+    // Try Telegram if configured
+    if let Some(ref telegram_config) = config.telegram {
+        let messenger = TelegramMessenger::new(&telegram_config.bot_token, telegram_config.chat_id);
+        messenger.send_notification(message).await?;
+        return Ok(());
+    }
+
+    // Try Discord as fallback
+    #[cfg(feature = "discord")]
+    if let Some(ref discord_config) = config.discord {
+        if discord_config.enabled {
+            let messenger =
+                DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
+            messenger.send_notification(message).await?;
+            return Ok(());
+        }
+    }
+
+    anyhow::bail!("No messenger configured")
 }
 
 /// Print configuration status.

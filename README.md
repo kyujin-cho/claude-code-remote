@@ -135,12 +135,26 @@ Add to your `~/.claude/settings.json` or project `.claude/settings.json`:
           }
         ]
       }
+    ],
+    "Notification": [
+      {
+        "matcher": {},
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-code-telegram notify"
+          }
+        ]
+      }
     ]
   }
 }
 ```
 
-The `Stop` hook is optional - add it if you want job completion notifications.
+**Hook types:**
+- `PermissionRequest` - Required. Sends permission requests for tool usage.
+- `Stop` - Optional. Sends job completion notifications with summary.
+- `Notification` - Optional. Relays Claude Code notifications (idle prompts, etc.).
 
 ### Signal Setup (Optional)
 
@@ -274,6 +288,12 @@ claude-code-telegram hook
 
 # Job completion hook handler (used by Claude Code Stop hooks)
 claude-code-telegram stop
+
+# Notification relay handler (used by Claude Code Notification hooks)
+claude-code-telegram notify
+
+# Send a custom message to configured messengers
+claude-code-telegram relay "Your message here"
 
 # Run the Telegram bot (for /start, /help, /status commands)
 claude-code-telegram bot
