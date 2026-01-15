@@ -119,7 +119,13 @@ pub async fn send_notification(config: &Config, event: &StopEvent) -> Result<(),
         return Ok(());
     }
 
-    let bot = Bot::new(&config.telegram_bot_token);
+    // Require telegram config for now (stop notifications only support telegram)
+    let telegram_config = match &config.telegram {
+        Some(tc) => tc,
+        None => return Ok(()), // Silently skip if telegram not configured
+    };
+
+    let bot = Bot::new(&telegram_config.bot_token);
 
     let project_name = event.get_project_name();
 
@@ -142,7 +148,7 @@ pub async fn send_notification(config: &Config, event: &StopEvent) -> Result<(),
         lines.push(format!("*Summary:*\n{}", summary));
     }
 
-    bot.send_message(config.telegram_chat_id, lines.join("\n"))
+    bot.send_message(telegram_config.chat_id, lines.join("\n"))
         .parse_mode(ParseMode::MarkdownV2)
         .await?;
 

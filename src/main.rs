@@ -82,10 +82,15 @@ async fn print_status() -> Result<()> {
             println!("✅ Configuration: Found");
             println!("   Hostname: {}", config.hostname);
             println!("   Timeout: {}s", config.timeout_seconds);
+            println!("   Primary: {}", config.primary_messenger);
             println!();
             println!("📱 Telegram:");
-            println!("   Status: Configured");
-            println!("   Chat ID: {}", config.telegram_chat_id);
+            if let Some(telegram) = &config.telegram {
+                println!("   Status: Configured");
+                println!("   Chat ID: {}", telegram.chat_id);
+            } else {
+                println!("   Status: Not configured");
+            }
 
             #[cfg(feature = "signal")]
             {

@@ -133,7 +133,7 @@ pub async fn handle_permission_request(
 ) -> Result<Decision, HookError> {
     let timeout = Duration::from_secs(config.timeout_seconds);
 
-    // Select messenger based on config
+    // Try Discord if configured as primary
     #[cfg(feature = "discord")]
     if config.primary_messenger == "discord" {
         if let Some(ref discord_config) = config.discord {
@@ -152,16 +152,40 @@ pub async fn handle_permission_request(
         }
     }
 
-    // Default to Telegram
-    let messenger = TelegramMessenger::new(&config.telegram_bot_token, config.telegram_chat_id);
-    handle_permission_request_with_messenger(
-        &messenger,
-        always_allow,
-        request,
-        &config.hostname,
-        timeout,
-    )
-    .await
+    // Try Telegram if configured as primary or as fallback
+    if let Some(ref telegram_config) = config.telegram {
+        let messenger = TelegramMessenger::new(&telegram_config.bot_token, telegram_config.chat_id);
+        return handle_permission_request_with_messenger(
+            &messenger,
+            always_allow,
+            request,
+            &config.hostname,
+            timeout,
+        )
+        .await;
+    }
+
+    // Try Discord as fallback if telegram not available
+    #[cfg(feature = "discord")]
+    if let Some(ref discord_config) = config.discord {
+        if discord_config.enabled {
+            let messenger =
+                DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
+            return handle_permission_request_with_messenger(
+                &messenger,
+                always_allow,
+                request,
+                &config.hostname,
+                timeout,
+            )
+            .await;
+        }
+    }
+
+    // No messenger available
+    Err(HookError::ConfigError(
+        crate::error::ConfigError::MissingField("no messenger configured".to_string()),
+    ))
 }
 
 /// Read JSON input from stdin.
