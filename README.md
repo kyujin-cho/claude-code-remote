@@ -12,7 +12,32 @@ Claude Code hook & messaging integration to notify you about permission requests
 
 ## Installation
 
-### Option A: Download Pre-built Binary (Recommended)
+### Quick Install (Recommended)
+
+Run the interactive installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kyujin-cho/claude-code-remote/main/install.sh | bash
+```
+
+The installer will:
+1. Detect your platform and download the appropriate binary
+2. Prompt you to configure your preferred messenger (Telegram/Discord/Signal)
+3. Set up Claude Code hooks automatically
+
+**Installer options:**
+```bash
+# Skip configuration (binary only)
+curl -fsSL ... | bash -s -- --skip-config
+
+# Install to custom directory
+curl -fsSL ... | bash -s -- --install-dir ~/.local/bin
+
+# Install specific version
+curl -fsSL ... | bash -s -- --version v1.0.0
+```
+
+### Manual Download
 
 Download the latest release for your platform:
 
@@ -36,30 +61,20 @@ chmod +x claude-code-telegram
 sudo mv claude-code-telegram /usr/local/bin/
 ```
 
-### Option B: Build from Source
+### Build from Source
+
+Requires [Rust toolchain](https://rustup.rs).
 
 ```bash
-# Requires Rust toolchain (https://rustup.rs)
+# Telegram only (~4 MB)
 cargo build --release
 sudo cp target/release/claude-code-telegram /usr/local/bin/
-```
 
-### Option C: Build with Discord Support
-
-Discord support uses [serenity](https://github.com/serenity-rs/serenity) and adds button-based interactions.
-
-```bash
-# Build with Discord feature (requires Rust toolchain)
+# With Discord support (~8 MB)
 cargo build --release --features discord
 sudo cp target/release/claude-code-telegram /usr/local/bin/
-```
 
-### Option D: Build with Signal Support
-
-Signal support requires additional dependencies and results in a larger binary (~30 MB).
-
-```bash
-# Build with Signal feature (requires Rust toolchain)
+# With Signal support (~30 MB, AGPL-3.0 license)
 cargo build --release --features signal
 sudo cp target/release/claude-code-telegram /usr/local/bin/
 ```
