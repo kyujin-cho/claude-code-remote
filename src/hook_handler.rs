@@ -1,19 +1,19 @@
 //! Permission request handler for Claude Code hooks.
 //!
-//! Handles PermissionRequest hook events by sending Telegram notifications
-//! with inline keyboards and waiting for user decisions.
+//! Handles PermissionRequest hook events by sending messages via configured
+//! messenger (Telegram, Signal, Discord) with interactive decision options.
 
 use crate::always_allow::AlwaysAllowManager;
 use crate::config::Config;
 use crate::error::HookError;
-use crate::telegram::{create_permission_keyboard, escape_markdown, parse_callback_data, Decision};
+#[cfg(feature = "discord")]
+use crate::messenger::discord::DiscordMessenger;
+use crate::messenger::telegram::TelegramMessenger;
+use crate::messenger::{Decision, Messenger, PermissionMessage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{self, Read};
 use std::time::Duration;
-use teloxide::prelude::*;
-use teloxide::types::{ParseMode, UpdateKind};
-use tokio::time::{interval, timeout};
 
 /// Claude Code hook input for permission requests.
 #[derive(Debug, Deserialize)]
@@ -47,60 +47,14 @@ impl PermissionRequest {
         }
     }
 
-    /// Format the permission request as a Telegram message.
-    pub fn format_message(&self, hostname: Option<&str>) -> String {
-        let mut lines = vec![format!(
-            "🔐 *Permission Request* `\\[{}\\]`",
-            escape_markdown(&self.request_id)
-        )];
-
-        if let Some(host) = hostname {
-            lines.push(format!("🖥️ *Host:* `{}`", escape_markdown(host)));
-        }
-
-        lines.push(String::new());
-        lines.push(format!("*Tool:* `{}`", escape_markdown(&self.tool_name)));
-
-        match self.tool_name.as_str() {
-            "Bash" => {
-                if let Some(command) = self.tool_input.get("command").and_then(|v| v.as_str()) {
-                    lines.push(format!(
-                        "*Command:*\n```\n{}\n```",
-                        escape_markdown(command)
-                    ));
-                }
-            }
-            "Edit" | "Write" => {
-                if let Some(file_path) = self.tool_input.get("file_path").and_then(|v| v.as_str()) {
-                    lines.push(format!("*File:* `{}`", escape_markdown(file_path)));
-                }
-
-                if self.tool_name == "Edit" {
-                    if let Some(old_string) =
-                        self.tool_input.get("old_string").and_then(|v| v.as_str())
-                    {
-                        let truncated: String = old_string.chars().take(200).collect();
-                        lines.push(format!("*Old:*\n```\n{}\n```", escape_markdown(&truncated)));
-                    }
-                    if let Some(new_string) =
-                        self.tool_input.get("new_string").and_then(|v| v.as_str())
-                    {
-                        let truncated: String = new_string.chars().take(200).collect();
-                        lines.push(format!("*New:*\n```\n{}\n```", escape_markdown(&truncated)));
-                    }
-                }
-            }
-            _ => {
-                let input_str = serde_json::to_string_pretty(&self.tool_input).unwrap_or_default();
-                let truncated: String = input_str.chars().take(500).collect();
-                lines.push(format!(
-                    "*Input:*\n```json\n{}\n```",
-                    escape_markdown(&truncated)
-                ));
-            }
-        }
-
-        lines.join("\n")
+    /// Convert to a PermissionMessage for sending via messenger.
+    pub fn to_message(&self, hostname: &str) -> PermissionMessage {
+        PermissionMessage::new(
+            self.request_id.clone(),
+            self.tool_name.clone(),
+            hostname.to_string(),
+            self.tool_input.clone(),
+        )
     }
 }
 
@@ -135,209 +89,79 @@ pub fn create_hook_response(decision: Decision) -> HookOutput {
     }
 }
 
-/// Send an auto-approved notification (no buttons).
-async fn send_auto_approved_notification(
-    bot: &Bot,
-    config: &Config,
+/// Handle a permission request using the provided messenger.
+///
+/// This is the main entry point for processing permission requests.
+/// It checks the always-allow list first, then sends a message via
+/// the messenger and waits for user decision.
+pub async fn handle_permission_request_with_messenger<M: Messenger>(
+    messenger: &M,
+    always_allow: &AlwaysAllowManager,
     request: &PermissionRequest,
-) -> Result<(), HookError> {
-    let mut lines = vec![
-        format!(
-            "⚙️ *Auto\\-Approved* `\\[{}\\]`",
-            escape_markdown(&request.request_id)
-        ),
-        format!("🖥️ *Host:* `{}`", escape_markdown(&config.hostname)),
-        String::new(),
-        format!(
-            "*Tool:* `{}` _\\(in always\\-allow list\\)_",
-            escape_markdown(&request.tool_name)
-        ),
-    ];
+    hostname: &str,
+    request_timeout: Duration,
+) -> Result<Decision, HookError> {
+    let message = request.to_message(hostname);
 
-    match request.tool_name.as_str() {
-        "Bash" => {
-            if let Some(command) = request.tool_input.get("command").and_then(|v| v.as_str()) {
-                lines.push(format!(
-                    "*Command:*\n```\n{}\n```",
-                    escape_markdown(command)
-                ));
-            }
-        }
-        "Edit" | "Write" => {
-            if let Some(file_path) = request.tool_input.get("file_path").and_then(|v| v.as_str()) {
-                lines.push(format!("*File:* `{}`", escape_markdown(file_path)));
-            }
-        }
-        _ => {
-            let input_str = serde_json::to_string_pretty(&request.tool_input).unwrap_or_default();
-            let truncated: String = input_str.chars().take(500).collect();
-            lines.push(format!(
-                "*Input:*\n```json\n{}\n```",
-                escape_markdown(&truncated)
-            ));
-        }
+    // Check if tool is in always-allow list
+    if always_allow.is_allowed(&request.tool_name) {
+        messenger.send_auto_approved(&message).await?;
+        return Ok(Decision::Allow);
     }
 
-    bot.send_message(config.telegram_chat_id, lines.join("\n"))
-        .parse_mode(ParseMode::MarkdownV2)
+    // Send permission request and wait for decision
+    let decision = messenger
+        .send_permission_request(&message, request_timeout)
         .await?;
 
-    Ok(())
+    // Handle always allow
+    if decision == Decision::AlwaysAllow {
+        let _ = always_allow.add_tool(&request.tool_name);
+        return Ok(Decision::Allow);
+    }
+
+    Ok(decision)
 }
 
-/// Handle a permission request and wait for user decision.
+/// Handle a permission request using the configured primary messenger.
 ///
-/// Uses manual getUpdates polling to avoid conflicts when multiple
-/// permission requests are active simultaneously.
+/// Selects between Telegram, Discord, or Signal based on config.primary_messenger.
 pub async fn handle_permission_request(
     config: &Config,
     always_allow: &AlwaysAllowManager,
     request: &PermissionRequest,
 ) -> Result<Decision, HookError> {
-    let bot = Bot::new(&config.telegram_bot_token);
+    let timeout = Duration::from_secs(config.timeout_seconds);
 
-    // Check if tool is in always-allow list
-    if always_allow.is_allowed(&request.tool_name) {
-        send_auto_approved_notification(&bot, config, request).await?;
-        return Ok(Decision::Allow);
+    // Select messenger based on config
+    #[cfg(feature = "discord")]
+    if config.primary_messenger == "discord" {
+        if let Some(ref discord_config) = config.discord {
+            if discord_config.enabled {
+                let messenger =
+                    DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
+                return handle_permission_request_with_messenger(
+                    &messenger,
+                    always_allow,
+                    request,
+                    &config.hostname,
+                    timeout,
+                )
+                .await;
+            }
+        }
     }
 
-    // Send message with inline keyboard
-    let keyboard = create_permission_keyboard(&request.request_id, &request.tool_name);
-    let original_message = request.format_message(Some(&config.hostname));
-    let message = bot
-        .send_message(config.telegram_chat_id, &original_message)
-        .parse_mode(ParseMode::MarkdownV2)
-        .reply_markup(keyboard)
-        .await?;
-
-    let message_id = message.id;
-    let chat_id = config.telegram_chat_id;
-
-    // Poll for callback query with timeout
-    let poll_result = timeout(
-        Duration::from_secs(300),
-        poll_for_callback(&bot, &request.request_id, message_id, chat_id),
+    // Default to Telegram
+    let messenger = TelegramMessenger::new(&config.telegram_bot_token, config.telegram_chat_id);
+    handle_permission_request_with_messenger(
+        &messenger,
+        always_allow,
+        request,
+        &config.hostname,
+        timeout,
     )
-    .await;
-
-    match poll_result {
-        Ok(Ok(callback_decision)) => {
-            // Handle always allow
-            if callback_decision == Decision::AlwaysAllow {
-                let _ = always_allow.add_tool(&request.tool_name);
-            }
-
-            // Determine status text
-            let status = match callback_decision {
-                Decision::Allow => "✅ Approved".to_string(),
-                Decision::Deny => "❌ Denied".to_string(),
-                Decision::AlwaysAllow => format!(
-                    "🔓 Always Allowed \\(`{}` added to list\\)",
-                    escape_markdown(&request.tool_name)
-                ),
-            };
-
-            // Update message with status
-            let new_text = format!("{}\n\n*Status:* {}", original_message, status);
-            let _ = bot
-                .edit_message_text(chat_id, message_id, new_text)
-                .parse_mode(ParseMode::MarkdownV2)
-                .await;
-
-            // Return allow for AlwaysAllow
-            if callback_decision == Decision::AlwaysAllow {
-                Ok(Decision::Allow)
-            } else {
-                Ok(callback_decision)
-            }
-        }
-        Ok(Err(e)) => {
-            // Error during polling
-            let _ = bot
-                .edit_message_text(
-                    chat_id,
-                    message_id,
-                    format!("{}\n\n*Status:* ❌ Error", original_message),
-                )
-                .parse_mode(ParseMode::MarkdownV2)
-                .await;
-            Err(e)
-        }
-        Err(_) => {
-            // Timeout
-            let _ = bot
-                .edit_message_text(
-                    chat_id,
-                    message_id,
-                    format!("{}\n\n*Status:* ⏱️ Timeout \\- Denied", original_message),
-                )
-                .parse_mode(ParseMode::MarkdownV2)
-                .await;
-            Ok(Decision::Deny)
-        }
-    }
-}
-
-/// Poll for callback query matching our request.
-///
-/// This uses manual getUpdates polling with message_id filtering to avoid
-/// conflicts with other concurrent permission requests.
-async fn poll_for_callback(
-    bot: &Bot,
-    request_id: &str,
-    message_id: teloxide::types::MessageId,
-    chat_id: teloxide::types::ChatId,
-) -> Result<Decision, HookError> {
-    let mut poll_interval = interval(Duration::from_millis(500));
-    let mut offset: Option<i32> = None;
-
-    loop {
-        poll_interval.tick().await;
-
-        // Build getUpdates request
-        let mut get_updates = bot.get_updates();
-        if let Some(off) = offset {
-            get_updates = get_updates.offset(off);
-        }
-        get_updates = get_updates.timeout(5);
-        get_updates =
-            get_updates.allowed_updates(vec![teloxide::types::AllowedUpdate::CallbackQuery]);
-
-        let updates = match get_updates.await {
-            Ok(updates) => updates,
-            Err(_) => continue, // Retry on error
-        };
-
-        for update in updates {
-            // Update offset for next poll
-            offset = Some((update.id.0 + 1) as i32);
-
-            // Check if this is a callback query
-            if let UpdateKind::CallbackQuery(query) = update.kind {
-                // Check if callback is for our message
-                if let Some(msg) = &query.message {
-                    if msg.chat().id != chat_id || msg.id() != message_id {
-                        continue; // Not our message
-                    }
-                } else {
-                    continue; // No message info
-                }
-
-                // Parse callback data
-                if let Some(data) = &query.data {
-                    if let Some(callback) = parse_callback_data(data) {
-                        if callback.request_id == request_id {
-                            // Answer callback query to remove loading state
-                            let _ = bot.answer_callback_query(&query.id).await;
-
-                            return Ok(callback.decision);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    .await
 }
 
 /// Read JSON input from stdin.
@@ -387,36 +211,17 @@ mod tests {
     }
 
     #[test]
-    fn test_format_message_bash() {
+    fn test_permission_request_to_message() {
         let request = PermissionRequest {
             tool_name: "Bash".to_string(),
             tool_input: serde_json::json!({"command": "ls -la"}),
             request_id: "abc12345".to_string(),
         };
 
-        let message = request.format_message(Some("test-host"));
-        assert!(message.contains("Bash"));
-        assert!(message.contains("ls \\-la"));
-        assert!(message.contains("test\\-host"));
-    }
-
-    #[test]
-    fn test_format_message_edit() {
-        let request = PermissionRequest {
-            tool_name: "Edit".to_string(),
-            tool_input: serde_json::json!({
-                "file_path": "/path/to/file.txt",
-                "old_string": "old",
-                "new_string": "new"
-            }),
-            request_id: "abc12345".to_string(),
-        };
-
-        let message = request.format_message(None);
-        assert!(message.contains("Edit"));
-        assert!(message.contains("file\\.txt"));
-        assert!(message.contains("old"));
-        assert!(message.contains("new"));
+        let message = request.to_message("test-host");
+        assert_eq!(message.tool_name, "Bash");
+        assert_eq!(message.hostname, "test-host");
+        assert_eq!(message.request_id, "abc12345");
     }
 
     #[test]

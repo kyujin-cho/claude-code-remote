@@ -1,14 +1,14 @@
 # Claude Code Remote
 
-Claude Code hook & Telegram Bot to notify user about active CC permission request and receive the decision via Telegram bot.
+Claude Code hook & messaging integration to notify you about permission requests and receive decisions remotely.
 
 ## Features
 
-- **Permission request notifications** via Telegram with inline keyboards
+- **Permission request notifications** via Telegram, Discord (with buttons), or Signal (text-based)
 - **Always Allow** feature to auto-approve trusted tools
 - **Job completion notifications** when Claude Code finishes
 - **Multi-machine support** with hostname display
-- **Small binary size**: ~4 MB (vs ~50 MB for the archived Python version)
+- **Small binary size**: ~4 MB Telegram-only, ~8 MB with Discord, ~30 MB with Signal
 
 ## Installation
 
@@ -43,6 +43,28 @@ sudo mv claude-code-telegram /usr/local/bin/
 cargo build --release
 sudo cp target/release/claude-code-telegram /usr/local/bin/
 ```
+
+### Option C: Build with Discord Support
+
+Discord support uses [serenity](https://github.com/serenity-rs/serenity) and adds button-based interactions.
+
+```bash
+# Build with Discord feature (requires Rust toolchain)
+cargo build --release --features discord
+sudo cp target/release/claude-code-telegram /usr/local/bin/
+```
+
+### Option D: Build with Signal Support
+
+Signal support requires additional dependencies and results in a larger binary (~30 MB).
+
+```bash
+# Build with Signal feature (requires Rust toolchain)
+cargo build --release --features signal
+sudo cp target/release/claude-code-telegram /usr/local/bin/
+```
+
+**Note:** Signal integration uses [presage](https://github.com/whisperfish/presage) which is licensed under AGPL-3.0. Building with `--features signal` makes the resulting binary subject to AGPL-3.0 licensing requirements.
 
 ## Setup
 
@@ -105,6 +127,105 @@ Add to your `~/.claude/settings.json` or project `.claude/settings.json`:
 
 The `Stop` hook is optional - add it if you want job completion notifications.
 
+### Signal Setup (Optional)
+
+Signal support is experimental and requires building with the `signal` feature.
+
+#### 1. Link as Secondary Device
+
+```bash
+# Create data directory
+mkdir -p ~/.claude/signal_data
+
+# Link device (displays QR code)
+claude-code-telegram signal-link --device-name "claude-code"
+```
+
+Open Signal on your phone, go to Settings > Linked Devices > Link New Device, and scan the QR code.
+
+#### 2. Configure Signal in Settings
+
+Update `~/.claude/telegram_hook.json` to the new multi-messenger format:
+
+```json
+{
+  "messengers": {
+    "telegram": {
+      "enabled": true,
+      "bot_token": "your_bot_token_here",
+      "chat_id": "your_chat_id_here"
+    },
+    "signal": {
+      "enabled": true,
+      "phone_number": "+1234567890",
+      "device_name": "claude-code",
+      "data_path": "~/.claude/signal_data"
+    }
+  },
+  "preferences": {
+    "primary_messenger": "telegram",
+    "timeout_seconds": 300
+  }
+}
+```
+
+#### Signal Limitations
+
+- No inline keyboard support - you must reply with text commands
+- Reply format: `ALLOW <request_id>`, `DENY <request_id>`, or `ALWAYS <request_id>`
+- Example: `ALLOW abc123`
+
+### Discord Setup (Optional)
+
+Discord support requires building with the `discord` feature.
+
+#### 1. Create a Discord Bot
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click "New Application" and give it a name
+3. Go to "Bot" section and click "Reset Token"
+4. Copy the bot token
+5. Enable "Message Content Intent" in Bot settings
+
+#### 2. Invite the Bot
+
+1. Go to OAuth2 > URL Generator
+2. Select scopes: `bot`
+3. Select permissions: `Send Messages`, `Read Message History`
+4. Copy the generated URL and open it to invite the bot
+
+#### 3. Get Your User ID
+
+1. Enable Developer Mode in Discord (Settings > App Settings > Advanced)
+2. Right-click your username and select "Copy User ID"
+
+#### 4. Configure Discord in Settings
+
+Update `~/.claude/telegram_hook.json` to include Discord:
+
+```json
+{
+  "messengers": {
+    "telegram": {
+      "enabled": true,
+      "bot_token": "your_telegram_bot_token",
+      "chat_id": "your_telegram_chat_id"
+    },
+    "discord": {
+      "enabled": true,
+      "bot_token": "your_discord_bot_token",
+      "user_id": "your_discord_user_id"
+    }
+  },
+  "preferences": {
+    "primary_messenger": "discord",
+    "timeout_seconds": 300
+  }
+}
+```
+
+Discord sends permission requests via DM with interactive buttons (Allow/Deny/Always Allow).
+
 ## Usage
 
 When Claude Code attempts to use a matched tool (Bash, Edit, Write), you'll receive a Telegram notification with:
@@ -142,6 +263,12 @@ claude-code-telegram stop
 # Run the Telegram bot (for /start, /help, /status commands)
 claude-code-telegram bot
 
+# Show configuration status
+claude-code-telegram status
+
+# Link Signal device (requires --features signal)
+claude-code-telegram signal-link --device-name "my-device"
+
 # Show help
 claude-code-telegram --help
 ```
@@ -155,11 +282,29 @@ cargo build
 # Release build (optimized)
 cargo build --release
 
+# Build with Discord support
+cargo build --features discord
+
+# Build with Signal support
+cargo build --features signal
+
 # Run tests
 cargo test
 
+# Run tests with Discord feature
+cargo test --features discord
+
+# Run tests with Signal feature
+cargo test --features signal
+
 # Run clippy lints
-cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --all-targets -- -D warnings
+
+# Run clippy with Discord feature
+cargo clippy --all-targets --features discord -- -D warnings
+
+# Run clippy with Signal feature
+cargo clippy --all-targets --features signal -- -D warnings
 
 # Format code
 cargo fmt

@@ -44,6 +44,14 @@ pub enum HookError {
     #[error("Telegram error: {0}")]
     TelegramError(#[from] teloxide::RequestError),
 
+    #[error("Signal error: {0}")]
+    #[allow(dead_code)]
+    Signal(String),
+
+    #[error("Discord error: {0}")]
+    #[allow(dead_code)]
+    Discord(String),
+
     #[error("Timeout waiting for decision")]
     #[allow(dead_code)]
     Timeout,
