@@ -59,6 +59,12 @@ curl -L -o claude-code-telegram \
   https://github.com/kyujin-cho/claude-code-remote/releases/latest/download/claude-code-telegram-linux-x86_64
 chmod +x claude-code-telegram
 sudo mv claude-code-telegram /usr/local/bin/
+
+# Linux (ARM64/aarch64)
+curl -L -o claude-code-telegram \
+  https://github.com/kyujin-cho/claude-code-remote/releases/latest/download/claude-code-telegram-linux-aarch64
+chmod +x claude-code-telegram
+sudo mv claude-code-telegram /usr/local/bin/
 ```
 
 ### Build from Source
@@ -346,6 +352,7 @@ cargo fmt
 ## Cross-Compilation Targets
 
 - `x86_64-unknown-linux-musl` (Linux x86_64, static)
+- `aarch64-unknown-linux-musl` (Linux ARM64, static)
 - `x86_64-apple-darwin` (macOS Intel)
 - `aarch64-apple-darwin` (macOS Apple Silicon)
 
