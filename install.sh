@@ -11,6 +11,9 @@
 
 set -e
 
+# Preserve original stdout for user messages (fd 3)
+exec 3>&1
+
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -112,7 +115,8 @@ download_binary() {
 
     tmp_file="$(mktemp)"
 
-    info "Downloading ${BINARY_NAME} ${version} for ${PLATFORM}..."
+    # Output to fd 3 (original stdout) to avoid contaminating return value
+    echo -e "${BLUE}==>${NC} ${BOLD}Downloading ${BINARY_NAME} ${version} for ${PLATFORM}...${NC}" >&3
 
     if command_exists curl; then
         curl -fsSL "$url" -o "$tmp_file"
