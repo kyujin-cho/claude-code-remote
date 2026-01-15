@@ -52,11 +52,7 @@ fn format_notification(input: &NotificationInput, hostname: &str) -> String {
 
     if !input.cwd.is_empty() {
         // Extract project name from cwd
-        let project = input
-            .cwd
-            .split('/')
-            .next_back()
-            .unwrap_or(&input.cwd);
+        let project = input.cwd.split('/').next_back().unwrap_or(&input.cwd);
         lines.push(format!("📁 **Project:** {}", project));
     }
 
@@ -75,7 +71,10 @@ fn format_notification(input: &NotificationInput, hostname: &str) -> String {
 }
 
 /// Send notification via the configured messenger.
-pub async fn send_notification(config: &Config, input: &NotificationInput) -> Result<(), HookError> {
+pub async fn send_notification(
+    config: &Config,
+    input: &NotificationInput,
+) -> Result<(), HookError> {
     let text = format_notification(input, &config.hostname);
 
     // Try Discord if configured as primary

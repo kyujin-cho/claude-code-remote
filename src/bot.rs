@@ -108,9 +108,10 @@ async fn status_handler(bot: Bot, msg: Message, config: &Config) -> ResponseResu
 pub async fn run() -> Result<()> {
     let config = Config::load(None)?;
 
-    let telegram_config = config.telegram.as_ref().ok_or_else(|| {
-        anyhow::anyhow!("Telegram configuration required for bot command")
-    })?;
+    let telegram_config = config
+        .telegram
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Telegram configuration required for bot command"))?;
 
     let bot = Bot::new(&telegram_config.bot_token);
 

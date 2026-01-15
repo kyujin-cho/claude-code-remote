@@ -155,12 +155,11 @@ pub async fn send_notification(config: &Config, event: &StopEvent) -> Result<(),
             if discord_config.enabled {
                 let messenger =
                     DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
-                messenger
-                    .send_notification(&text)
-                    .await
-                    .map_err(|e| StopError::TelegramError(teloxide::RequestError::Api(
+                messenger.send_notification(&text).await.map_err(|e| {
+                    StopError::TelegramError(teloxide::RequestError::Api(
                         teloxide::ApiError::Unknown(e.to_string()),
-                    )))?;
+                    ))
+                })?;
                 return Ok(());
             }
         }
@@ -169,12 +168,11 @@ pub async fn send_notification(config: &Config, event: &StopEvent) -> Result<(),
     // Try Telegram if configured
     if let Some(ref telegram_config) = config.telegram {
         let messenger = TelegramMessenger::new(&telegram_config.bot_token, telegram_config.chat_id);
-        messenger
-            .send_notification(&text)
-            .await
-            .map_err(|e| StopError::TelegramError(teloxide::RequestError::Api(
-                teloxide::ApiError::Unknown(e.to_string()),
-            )))?;
+        messenger.send_notification(&text).await.map_err(|e| {
+            StopError::TelegramError(teloxide::RequestError::Api(teloxide::ApiError::Unknown(
+                e.to_string(),
+            )))
+        })?;
         return Ok(());
     }
 
@@ -184,12 +182,11 @@ pub async fn send_notification(config: &Config, event: &StopEvent) -> Result<(),
         if discord_config.enabled {
             let messenger =
                 DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
-            messenger
-                .send_notification(&text)
-                .await
-                .map_err(|e| StopError::TelegramError(teloxide::RequestError::Api(
-                    teloxide::ApiError::Unknown(e.to_string()),
-                )))?;
+            messenger.send_notification(&text).await.map_err(|e| {
+                StopError::TelegramError(teloxide::RequestError::Api(teloxide::ApiError::Unknown(
+                    e.to_string(),
+                )))
+            })?;
             return Ok(());
         }
     }

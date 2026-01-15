@@ -297,10 +297,12 @@ impl Config {
             .messengers
             .telegram
             .filter(|t| t.enabled && !t.bot_token.is_empty())
-            .map(|t| t.chat_id.to_chat_id().map(|chat_id| TelegramConfig {
-                bot_token: t.bot_token,
-                chat_id,
-            }))
+            .map(|t| {
+                t.chat_id.to_chat_id().map(|chat_id| TelegramConfig {
+                    bot_token: t.bot_token,
+                    chat_id,
+                })
+            })
             .transpose()?;
 
         #[cfg(feature = "signal")]
