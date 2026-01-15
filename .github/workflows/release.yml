@@ -54,6 +54,9 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # Use different cache key for cross builds to avoid GLIBC issues
+          key: ${{ matrix.use_cross && 'cross' || 'native' }}
 
       - name: Build release binary
         run: |
