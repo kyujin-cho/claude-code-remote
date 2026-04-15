@@ -107,16 +107,19 @@ impl Messenger for TelegramMessenger {
     }
 
     async fn send_notification(&self, text: &str) -> Result<(), HookError> {
-        self.bot
-            .send_message(self.chat_id, text)
-            .parse_mode(ParseMode::MarkdownV2)
-            .await?;
+        // Send without parse mode to avoid escaping issues with special characters
+        // The **bold** markers from notification handlers won't render but that's acceptable
+        self.bot.send_message(self.chat_id, text).await?;
         Ok(())
     }
 
     async fn send_auto_approved(&self, message: &PermissionMessage) -> Result<(), HookError> {
         let text = format_auto_approved_message(message);
-        self.send_notification(&text).await
+        self.bot
+            .send_message(self.chat_id, text)
+            .parse_mode(ParseMode::MarkdownV2)
+            .await?;
+        Ok(())
     }
 
     fn platform_name(&self) -> &'static str {
@@ -264,6 +267,9 @@ fn format_permission_message(message: &PermissionMessage) -> String {
         "🖥️ *Host:* `{}`",
         escape_markdown(&message.hostname)
     ));
+    if let Some(ref project) = message.project {
+        lines.push(format!("📁 *Project:* `{}`", escape_markdown(project)));
+    }
     lines.push(String::new());
     lines.push(format!("*Tool:* `{}`", escape_markdown(&message.tool_name)));
 
@@ -321,12 +327,15 @@ fn format_auto_approved_message(message: &PermissionMessage) -> String {
             escape_markdown(&message.request_id)
         ),
         format!("🖥️ *Host:* `{}`", escape_markdown(&message.hostname)),
-        String::new(),
-        format!(
-            "*Tool:* `{}` _\\(in always\\-allow list\\)_",
-            escape_markdown(&message.tool_name)
-        ),
     ];
+    if let Some(ref project) = message.project {
+        lines.push(format!("📁 *Project:* `{}`", escape_markdown(project)));
+    }
+    lines.push(String::new());
+    lines.push(format!(
+        "*Tool:* `{}` _\\(in always\\-allow list\\)_",
+        escape_markdown(&message.tool_name)
+    ));
 
     match message.tool_name.as_str() {
         "Bash" => {

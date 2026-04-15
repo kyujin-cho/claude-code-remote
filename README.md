@@ -7,6 +7,8 @@ Claude Code hook & messaging integration to notify you about permission requests
 - **Permission request notifications** via Telegram, Discord (with buttons), or Signal (text-based)
 - **Always Allow** feature to auto-approve trusted tools
 - **Job completion notifications** when Claude Code finishes
+- **All hook events supported** via unified `event` subcommand (SessionStart, PostToolUseFailure, TaskCompleted, TeammateIdle, etc.)
+- **Configurable event filters** to control which events trigger notifications
 - **Multi-machine support** with hostname display
 - **Small binary size**: ~4 MB Telegram-only, ~8 MB with Discord, ~30 MB with Signal
 
@@ -206,6 +208,26 @@ Create `~/.claude/hook_config.json` with your chosen messenger(s):
 }
 ```
 
+**Event filters** (optional, control which events send notifications):
+```json
+{
+  "messengers": { ... },
+  "preferences": {
+    "primary_messenger": "telegram",
+    "timeout_seconds": 300,
+    "event_filters": {
+      "SessionStart": true,
+      "PostToolUseFailure": true,
+      "TaskCompleted": true,
+      "SubagentStart": false,
+      "PreToolUse": false
+    }
+  }
+}
+```
+
+Default enabled events: `SessionStart`, `SessionEnd`, `PostToolUseFailure`, `TaskCompleted`, `TeammateIdle`. All other events are disabled by default.
+
 > **Legacy format:** The old `~/.claude/telegram_hook.json` format with `telegram_bot_token` and `telegram_chat_id` fields is still supported for backward compatibility.
 
 ### Configure Claude Code Hooks
@@ -217,47 +239,51 @@ Add to your `~/.claude/settings.json` or project `.claude/settings.json`:
   "hooks": {
     "PermissionRequest": [
       {
-        "matcher": {
-          "tools": ["Bash", "Edit", "Write"]
-        },
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-code-telegram hook"
-          }
-        ]
+        "matcher": { "tools": ["Bash", "Edit", "Write"] },
+        "hooks": [{ "type": "command", "command": "claude-code-telegram hook" }]
       }
     ],
     "Stop": [
       {
         "matcher": {},
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-code-telegram stop"
-          }
-        ]
+        "hooks": [{ "type": "command", "command": "claude-code-telegram stop" }]
       }
     ],
     "Notification": [
       {
         "matcher": {},
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-code-telegram notify"
-          }
-        ]
+        "hooks": [{ "type": "command", "command": "claude-code-telegram notify" }]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": {},
+        "hooks": [{ "type": "command", "command": "claude-code-telegram event SessionStart" }]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": {},
+        "hooks": [{ "type": "command", "command": "claude-code-telegram event PostToolUseFailure" }]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": {},
+        "hooks": [{ "type": "command", "command": "claude-code-telegram event TaskCompleted" }]
       }
     ]
   }
 }
 ```
 
+To generate a full configuration with all supported events: `claude-code-telegram hooks-config`
+
 **Hook types:**
 - `PermissionRequest` - Required. Sends permission requests for tool usage.
 - `Stop` - Optional. Sends job completion notifications with summary.
 - `Notification` - Optional. Relays Claude Code notifications (idle prompts, etc.).
+- `event <name>` - Optional. Handles any other Claude Code hook event (SessionStart, SessionEnd, PostToolUseFailure, TaskCompleted, TeammateIdle, SubagentStart/Stop, UserPromptSubmit, PreToolUse, PostToolUse, etc.).
 
 ## Usage
 
@@ -296,13 +322,21 @@ claude-code-telegram stop
 # Notification relay handler (used by Claude Code Notification hooks)
 claude-code-telegram notify
 
+# Generic event handler (supports all Claude Code hook events)
+claude-code-telegram event SessionStart
+claude-code-telegram event PostToolUseFailure
+claude-code-telegram event TaskCompleted
+
+# Generate full hooks configuration for settings.json
+claude-code-telegram hooks-config
+
 # Send a custom message to configured messengers
 claude-code-telegram relay "Your message here"
 
 # Run the Telegram bot (for /start, /help, /status commands)
 claude-code-telegram bot
 
-# Show configuration status
+# Show configuration status (including event filter settings)
 claude-code-telegram status
 
 # Link Signal device (requires --features signal)

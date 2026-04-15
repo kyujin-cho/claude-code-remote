@@ -1,0 +1,21 @@
+services:
+  e2e-tests:
+    build:
+      context: ../..
+      dockerfile: tests/e2e/Dockerfile
+    environment:
+      # Bot credentials (for claude-code-telegram)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      # Userbot credentials (for clicking buttons)
+      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
+      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
+      - TELEGRAM_PHONE=${TELEGRAM_PHONE}
+      - TELEGRAM_SESSION=${TELEGRAM_SESSION}
+      # Test configuration
+      - TEST_TIMEOUT=${TEST_TIMEOUT:-30}
+    volumes:
+      # Mount test files for faster iteration (optional)
+      - ./:/app/tests/e2e:ro
+    # Keep container running for debugging if needed
+    # command: ["sleep", "infinity"]

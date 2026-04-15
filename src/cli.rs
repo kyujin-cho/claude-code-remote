@@ -29,6 +29,15 @@ pub enum Commands {
     /// Handle Notification hooks for relaying Claude Code notifications (reads from stdin)
     Notify,
 
+    /// Handle any hook event by name (reads JSON from stdin)
+    ///
+    /// Usage: claude-code-telegram event <EVENT_NAME>
+    /// Examples: SessionStart, PostToolUseFailure, TaskCompleted
+    Event {
+        /// Hook event name (e.g., "SessionStart", "PostToolUseFailure")
+        name: String,
+    },
+
     /// Send a custom message to configured messengers
     Relay {
         /// Message to send
@@ -50,6 +59,17 @@ pub enum Commands {
         data_path: Option<PathBuf>,
     },
 
+    /// Run as an MCP channel server for two-way communication with Claude Code.
+    ///
+    /// Bridges Telegram messages into a running Claude Code session and
+    /// relays Claude's replies back. Also handles permission prompt relay.
+    /// Requires: --features channel
+    #[cfg(feature = "channel")]
+    Channel,
+
     /// Show current configuration status
     Status,
+
+    /// Print recommended hooks configuration for Claude Code settings.json
+    HooksConfig,
 }

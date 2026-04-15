@@ -5,14 +5,18 @@
 
 pub mod always_allow;
 pub mod bot;
+#[cfg(feature = "channel")]
+pub mod channel;
 pub mod cli;
 pub mod config;
 pub mod error;
+pub mod event_handler;
 pub mod hook_handler;
 pub mod messenger;
 pub mod notification_handler;
 pub mod stop_handler;
 pub mod telegram;
+pub mod util;
 
 // Re-export commonly used types
 pub use always_allow::AlwaysAllowManager;

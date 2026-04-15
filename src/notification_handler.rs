@@ -5,13 +5,8 @@
 
 use crate::config::Config;
 use crate::error::HookError;
-use crate::messenger::telegram::TelegramMessenger;
-use crate::messenger::Messenger;
+use crate::messenger;
 use serde::Deserialize;
-use std::io::{self, Read};
-
-#[cfg(feature = "discord")]
-use crate::messenger::discord::DiscordMessenger;
 
 /// Claude Code notification hook input.
 #[derive(Debug, Deserialize)]
@@ -77,48 +72,17 @@ pub async fn send_notification(
 ) -> Result<(), HookError> {
     let text = format_notification(input, &config.hostname);
 
-    // Try Discord if configured as primary
-    #[cfg(feature = "discord")]
-    if config.primary_messenger == "discord" {
-        if let Some(ref discord_config) = config.discord {
-            if discord_config.enabled {
-                let messenger =
-                    DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
-                return messenger.send_notification(&text).await;
-            }
-        }
-    }
+    let resolved = match messenger::resolve_messenger(config) {
+        Ok(m) => m,
+        Err(_) => return Ok(()), // No messenger available - silently skip
+    };
 
-    // Try Telegram if configured
-    if let Some(ref telegram_config) = config.telegram {
-        let messenger = TelegramMessenger::new(&telegram_config.bot_token, telegram_config.chat_id);
-        return messenger.send_notification(&text).await;
-    }
-
-    // Try Discord as fallback
-    #[cfg(feature = "discord")]
-    if let Some(ref discord_config) = config.discord {
-        if discord_config.enabled {
-            let messenger =
-                DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
-            return messenger.send_notification(&text).await;
-        }
-    }
-
-    // No messenger available - silently skip
-    Ok(())
-}
-
-/// Read JSON input from stdin.
-fn read_stdin() -> Result<String, io::Error> {
-    let mut buffer = String::new();
-    io::stdin().read_to_string(&mut buffer)?;
-    Ok(buffer)
+    resolved.send_notification(&text).await
 }
 
 /// Main entry point for the notification handler.
 pub async fn run() -> Result<(), HookError> {
-    let input_str = read_stdin()?;
+    let input_str = crate::util::read_stdin()?;
     let input: NotificationInput = serde_json::from_str(&input_str)?;
 
     let config = Config::load(None)?;

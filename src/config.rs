@@ -8,6 +8,7 @@
 
 use crate::error::ConfigError;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -167,6 +168,8 @@ struct PreferencesConfig {
     primary_messenger: String,
     #[serde(default = "default_timeout_seconds")]
     timeout_seconds: u64,
+    #[serde(default)]
+    event_filters: HashMap<String, bool>,
 }
 
 impl Default for PreferencesConfig {
@@ -174,6 +177,7 @@ impl Default for PreferencesConfig {
         Self {
             primary_messenger: default_primary_messenger(),
             timeout_seconds: default_timeout_seconds(),
+            event_filters: HashMap::new(),
         }
     }
 }
@@ -234,6 +238,30 @@ pub struct Config {
     /// Optional Discord configuration (only with discord feature)
     #[cfg(feature = "discord")]
     pub discord: Option<DiscordConfig>,
+    /// Event filter overrides (event_name -> enabled)
+    pub event_filters: HashMap<String, bool>,
+}
+
+/// Default events that are enabled when no explicit filter is set.
+const DEFAULT_ENABLED_EVENTS: &[&str] = &[
+    "SessionStart",
+    "SessionEnd",
+    "PostToolUseFailure",
+    "TaskCompleted",
+    "TeammateIdle",
+];
+
+impl Config {
+    /// Check if a hook event is enabled based on event_filters config.
+    ///
+    /// If the event has an explicit filter entry, use that value.
+    /// Otherwise, check against the default enabled list.
+    pub fn is_event_enabled(&self, event_name: &str) -> bool {
+        if let Some(&enabled) = self.event_filters.get(event_name) {
+            return enabled;
+        }
+        DEFAULT_ENABLED_EVENTS.contains(&event_name)
+    }
 }
 
 impl Config {
@@ -356,6 +384,7 @@ impl Config {
             signal,
             #[cfg(feature = "discord")]
             discord,
+            event_filters: config.preferences.event_filters,
         })
     }
 
@@ -380,6 +409,7 @@ impl Config {
             signal: None,
             #[cfg(feature = "discord")]
             discord: None,
+            event_filters: HashMap::new(),
         })
     }
 
@@ -412,6 +442,7 @@ impl Config {
             signal: None,
             #[cfg(feature = "discord")]
             discord: None,
+            event_filters: HashMap::new(),
         })
     }
 }
@@ -572,5 +603,81 @@ mod tests {
     #[test]
     fn test_config_from_json_missing_token() {
         test_legacy_config_missing_token();
+    }
+
+    // =========================================================================
+    // Event Filter Tests
+    // =========================================================================
+
+    #[test]
+    fn test_is_event_enabled_defaults() {
+        let config = make_test_config(HashMap::new());
+        // Default enabled events
+        assert!(config.is_event_enabled("SessionStart"));
+        assert!(config.is_event_enabled("SessionEnd"));
+        assert!(config.is_event_enabled("PostToolUseFailure"));
+        assert!(config.is_event_enabled("TaskCompleted"));
+        assert!(config.is_event_enabled("TeammateIdle"));
+        // Default disabled events
+        assert!(!config.is_event_enabled("SubagentStart"));
+        assert!(!config.is_event_enabled("PreToolUse"));
+        assert!(!config.is_event_enabled("PostCompact"));
+        assert!(!config.is_event_enabled("SomeUnknownEvent"));
+    }
+
+    #[test]
+    fn test_is_event_enabled_overrides() {
+        let mut filters = HashMap::new();
+        filters.insert("SessionStart".to_string(), false); // disable a default-on event
+        filters.insert("SubagentStart".to_string(), true); // enable a default-off event
+
+        let config = make_test_config(filters);
+        assert!(!config.is_event_enabled("SessionStart"));
+        assert!(config.is_event_enabled("SubagentStart"));
+        // Others unaffected
+        assert!(config.is_event_enabled("PostToolUseFailure"));
+        assert!(!config.is_event_enabled("PreToolUse"));
+    }
+
+    #[test]
+    fn test_event_filters_from_config_file() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        fs::write(
+            &config_path,
+            r#"{
+                "messengers": {
+                    "telegram": {
+                        "bot_token": "token",
+                        "chat_id": "123"
+                    }
+                },
+                "preferences": {
+                    "event_filters": {
+                        "SessionStart": false,
+                        "SubagentStart": true
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let config = Config::from_json(&config_path).unwrap();
+        assert!(!config.is_event_enabled("SessionStart"));
+        assert!(config.is_event_enabled("SubagentStart"));
+    }
+
+    fn make_test_config(event_filters: HashMap<String, bool>) -> Config {
+        Config {
+            hostname: "test".to_string(),
+            timeout_seconds: 300,
+            primary_messenger: "telegram".to_string(),
+            telegram: None,
+            #[cfg(feature = "signal")]
+            signal: None,
+            #[cfg(feature = "discord")]
+            discord: None,
+            event_filters,
+        }
     }
 }

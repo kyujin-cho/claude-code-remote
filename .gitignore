@@ -24,3 +24,6 @@ archives/**/__pycache__/
 archives/*.egg-info/
 archives/build/
 archives/dist/
+tests/e2e/.env
+tests/e2e/.venv/
+tests/e2e/__pycache__/

@@ -6,13 +6,10 @@
 use crate::always_allow::AlwaysAllowManager;
 use crate::config::Config;
 use crate::error::HookError;
-#[cfg(feature = "discord")]
-use crate::messenger::discord::DiscordMessenger;
-use crate::messenger::telegram::TelegramMessenger;
-use crate::messenger::{Decision, Messenger, PermissionMessage};
+use crate::messenger::{self, Decision, Messenger, PermissionMessage};
+use crate::util;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::{self, Read};
 use std::time::Duration;
 
 /// Claude Code hook input for permission requests.
@@ -22,6 +19,14 @@ pub struct HookInput {
     pub tool_name: String,
     #[serde(default)]
     pub tool_input: Value,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub tool_use_id: Option<String>,
 }
 
 fn default_tool_name() -> String {
@@ -34,6 +39,7 @@ pub struct PermissionRequest {
     pub tool_name: String,
     pub tool_input: Value,
     pub request_id: String,
+    pub cwd: Option<String>,
 }
 
 impl PermissionRequest {
@@ -44,16 +50,19 @@ impl PermissionRequest {
             tool_name: input.tool_name,
             tool_input: input.tool_input,
             request_id,
+            cwd: input.cwd,
         }
     }
 
     /// Convert to a PermissionMessage for sending via messenger.
     pub fn to_message(&self, hostname: &str) -> PermissionMessage {
+        let project = self.cwd.as_deref().map(util::project_name_from_cwd);
         PermissionMessage::new(
             self.request_id.clone(),
             self.tool_name.clone(),
             hostname.to_string(),
             self.tool_input.clone(),
+            project,
         )
     }
 }
@@ -75,15 +84,26 @@ pub struct HookSpecificOutput {
 #[derive(Debug, Serialize)]
 pub struct DecisionOutput {
     pub behavior: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "updatedInput")]
+    pub updated_input: Option<Value>,
 }
 
 /// Create the hook response JSON.
 pub fn create_hook_response(decision: Decision) -> HookOutput {
+    let message = match decision {
+        Decision::Deny => Some("Denied by user via messaging hook".to_string()),
+        _ => None,
+    };
+
     HookOutput {
         hook_specific_output: HookSpecificOutput {
             hook_event_name: "PermissionRequest".to_string(),
             decision: DecisionOutput {
                 behavior: decision.to_behavior().to_string(),
+                message,
+                updated_input: None,
             },
         },
     }
@@ -94,7 +114,7 @@ pub fn create_hook_response(decision: Decision) -> HookOutput {
 /// This is the main entry point for processing permission requests.
 /// It checks the always-allow list first, then sends a message via
 /// the messenger and waits for user decision.
-pub async fn handle_permission_request_with_messenger<M: Messenger>(
+pub async fn handle_permission_request_with_messenger<M: Messenger + ?Sized>(
     messenger: &M,
     always_allow: &AlwaysAllowManager,
     request: &PermissionRequest,
@@ -124,81 +144,28 @@ pub async fn handle_permission_request_with_messenger<M: Messenger>(
 }
 
 /// Handle a permission request using the configured primary messenger.
-///
-/// Selects between Telegram, Discord, or Signal based on config.primary_messenger.
 pub async fn handle_permission_request(
     config: &Config,
     always_allow: &AlwaysAllowManager,
     request: &PermissionRequest,
 ) -> Result<Decision, HookError> {
     let timeout = Duration::from_secs(config.timeout_seconds);
+    let resolved = messenger::resolve_messenger(config)?;
 
-    // Try Discord if configured as primary
-    #[cfg(feature = "discord")]
-    if config.primary_messenger == "discord" {
-        if let Some(ref discord_config) = config.discord {
-            if discord_config.enabled {
-                let messenger =
-                    DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
-                return handle_permission_request_with_messenger(
-                    &messenger,
-                    always_allow,
-                    request,
-                    &config.hostname,
-                    timeout,
-                )
-                .await;
-            }
-        }
-    }
-
-    // Try Telegram if configured as primary or as fallback
-    if let Some(ref telegram_config) = config.telegram {
-        let messenger = TelegramMessenger::new(&telegram_config.bot_token, telegram_config.chat_id);
-        return handle_permission_request_with_messenger(
-            &messenger,
-            always_allow,
-            request,
-            &config.hostname,
-            timeout,
-        )
-        .await;
-    }
-
-    // Try Discord as fallback if telegram not available
-    #[cfg(feature = "discord")]
-    if let Some(ref discord_config) = config.discord {
-        if discord_config.enabled {
-            let messenger =
-                DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
-            return handle_permission_request_with_messenger(
-                &messenger,
-                always_allow,
-                request,
-                &config.hostname,
-                timeout,
-            )
-            .await;
-        }
-    }
-
-    // No messenger available
-    Err(HookError::ConfigError(
-        crate::error::ConfigError::MissingField("no messenger configured".to_string()),
-    ))
-}
-
-/// Read JSON input from stdin.
-fn read_stdin() -> Result<String, io::Error> {
-    let mut buffer = String::new();
-    io::stdin().read_to_string(&mut buffer)?;
-    Ok(buffer)
+    handle_permission_request_with_messenger(
+        resolved.as_ref(),
+        always_allow,
+        request,
+        &config.hostname,
+        timeout,
+    )
+    .await
 }
 
 /// Main entry point for the hook handler.
 pub async fn run() -> Result<(), HookError> {
     // Read and parse input
-    let input_str = read_stdin()?;
+    let input_str = util::read_stdin()?;
     let input: HookInput = serde_json::from_str(&input_str)?;
 
     // Load config
@@ -227,11 +194,15 @@ mod tests {
         let input = HookInput {
             tool_name: "Bash".to_string(),
             tool_input: serde_json::json!({"command": "ls -la"}),
+            session_id: None,
+            cwd: Some("/home/user/project".to_string()),
+            tool_use_id: None,
         };
 
         let request = PermissionRequest::from_hook_input(input);
         assert_eq!(request.tool_name, "Bash");
         assert_eq!(request.request_id.len(), 8);
+        assert_eq!(request.cwd, Some("/home/user/project".to_string()));
     }
 
     #[test]
@@ -240,23 +211,58 @@ mod tests {
             tool_name: "Bash".to_string(),
             tool_input: serde_json::json!({"command": "ls -la"}),
             request_id: "abc12345".to_string(),
+            cwd: Some("/home/user/my-project".to_string()),
         };
 
         let message = request.to_message("test-host");
         assert_eq!(message.tool_name, "Bash");
         assert_eq!(message.hostname, "test-host");
         assert_eq!(message.request_id, "abc12345");
+        assert_eq!(message.project, Some("my-project".to_string()));
+    }
+
+    #[test]
+    fn test_permission_request_to_message_no_cwd() {
+        let request = PermissionRequest {
+            tool_name: "Bash".to_string(),
+            tool_input: serde_json::json!({"command": "ls"}),
+            request_id: "abc12345".to_string(),
+            cwd: None,
+        };
+
+        let message = request.to_message("test-host");
+        assert!(message.project.is_none());
     }
 
     #[test]
     fn test_create_hook_response_allow() {
         let response = create_hook_response(Decision::Allow);
         assert_eq!(response.hook_specific_output.decision.behavior, "allow");
+        assert!(response.hook_specific_output.decision.message.is_none());
     }
 
     #[test]
     fn test_create_hook_response_deny() {
         let response = create_hook_response(Decision::Deny);
         assert_eq!(response.hook_specific_output.decision.behavior, "deny");
+        assert!(response.hook_specific_output.decision.message.is_some());
+    }
+
+    #[test]
+    fn test_create_hook_response_deny_includes_message() {
+        let response = create_hook_response(Decision::Deny);
+        let json = serde_json::to_value(&response).unwrap();
+        assert!(json["hookSpecificOutput"]["decision"]["message"]
+            .as_str()
+            .is_some());
+    }
+
+    #[test]
+    fn test_create_hook_response_allow_no_updated_input() {
+        let response = create_hook_response(Decision::Allow);
+        let json = serde_json::to_value(&response).unwrap();
+        assert!(json["hookSpecificOutput"]["decision"]
+            .get("updatedInput")
+            .is_none());
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "claude-code-telegram"
-version = "1.0.0"
+version = "1.4.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Claude Code hook & Telegram Bot integration"
@@ -26,6 +26,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = "0.1"
 
+# Channel mode (MCP server for two-way communication)
+rmcp = { version = "1", features = ["server", "transport-io", "macros"], optional = true }
+schemars = { version = "1", optional = true }
+
 # Signal support (optional, AGPL-3.0 licensed)
 presage = { git = "https://github.com/whisperfish/presage", optional = true }
 presage-store-sqlite = { git = "https://github.com/whisperfish/presage", optional = true }
@@ -38,6 +42,7 @@ serenity = { version = "0.12", default-features = false, features = ["client", "
 
 [features]
 default = []
+channel = ["dep:rmcp", "dep:schemars"]
 signal = ["dep:presage", "dep:presage-store-sqlite", "dep:qrcode", "dep:futures-util", "dep:futures-channel"]
 discord = ["dep:serenity"]
 

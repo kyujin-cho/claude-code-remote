@@ -12,6 +12,8 @@ Features:
 - Receive user decisions (approve/deny/always allow) through messaging platforms
 - Respond back to Claude Code with the user's decision
 - Job completion notifications via Stop hooks
+- Generic event handler for all Claude Code hook events (SessionStart, PostToolUseFailure, TaskCompleted, etc.)
+- Configurable event filters to control notification volume
 - Discord support via optional `--features discord` build flag (MIT/Apache 2.0)
 - Signal support via optional `--features signal` build flag (AGPL-3.0 licensed)
 
@@ -41,22 +43,25 @@ Features:
 
 ```
 src/
-├── main.rs           # Entry point + tokio runtime
-├── lib.rs            # Library root
-├── cli.rs            # Clap subcommands (hook, stop, bot, signal-link, status)
-├── config.rs         # JSON/env config loading (supports new multi-messenger format)
-├── always_allow.rs   # Tool whitelist persistence
-├── hook_handler.rs   # Permission request handler (uses Messenger trait)
-├── stop_handler.rs   # Job completion notifications
-├── bot.rs            # Long-running Telegram bot
-├── telegram.rs       # Legacy re-exports for backward compatibility
-├── error.rs          # Error types
-└── messenger/        # Messenger abstraction layer
-    ├── mod.rs        # Messenger trait definition
-    ├── types.rs      # Decision enum, PermissionMessage struct
-    ├── telegram.rs   # Telegram implementation (inline keyboards)
-    ├── discord.rs    # Discord implementation (buttons, requires --features discord)
-    └── signal.rs     # Signal implementation (text-based, requires --features signal)
+├── main.rs               # Entry point + tokio runtime
+├── lib.rs                # Library root
+├── cli.rs                # Clap subcommands (hook, stop, notify, event, bot, etc.)
+├── config.rs             # JSON/env config loading (supports event_filters)
+├── util.rs               # Shared utilities (read_stdin, project_name_from_cwd)
+├── always_allow.rs       # Tool whitelist persistence
+├── hook_handler.rs       # PermissionRequest handler (uses Messenger trait)
+├── stop_handler.rs       # Stop hook - job completion notifications
+├── notification_handler.rs # Notification hook handler
+├── event_handler.rs      # Generic handler for all other hook events
+├── bot.rs                # Long-running Telegram bot
+├── telegram.rs           # Legacy re-exports for backward compatibility
+├── error.rs              # Error types
+└── messenger/            # Messenger abstraction layer
+    ├── mod.rs            # Messenger trait + resolve_messenger()
+    ├── types.rs          # Decision enum, PermissionMessage struct
+    ├── telegram.rs       # Telegram implementation (inline keyboards)
+    ├── discord.rs        # Discord implementation (buttons, requires --features discord)
+    └── signal.rs         # Signal implementation (text-based, requires --features signal)
 ```
 
 ## Claude Code Hook Integration
@@ -67,31 +72,45 @@ Claude Code hooks are configured in `~/.claude/settings.json` or project's `.cla
   "hooks": {
     "PermissionRequest": [
       {
-        "matcher": {
-          "tools": ["Bash", "Edit", "Write"]
-        },
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-code-telegram hook"
-          }
-        ]
+        "matcher": { "tools": ["Bash", "Edit", "Write"] },
+        "hooks": [{ "type": "command", "command": "claude-code-telegram hook" }]
       }
     ],
     "Stop": [
       {
         "matcher": {},
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-code-telegram stop"
-          }
-        ]
+        "hooks": [{ "type": "command", "command": "claude-code-telegram stop" }]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": {},
+        "hooks": [{ "type": "command", "command": "claude-code-telegram notify" }]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": {},
+        "hooks": [{ "type": "command", "command": "claude-code-telegram event SessionStart" }]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": {},
+        "hooks": [{ "type": "command", "command": "claude-code-telegram event PostToolUseFailure" }]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": {},
+        "hooks": [{ "type": "command", "command": "claude-code-telegram event TaskCompleted" }]
       }
     ]
   }
 }
 ```
+
+Use `claude-code-telegram hooks-config` to generate a full hooks configuration for all supported events.
 
 The hook script receives JSON via stdin with the permission request details and must output a JSON response.
 
@@ -132,11 +151,15 @@ cargo clippy --all-targets --features signal -- -D warnings
 cargo fmt
 
 # Run CLI commands
-./target/release/claude-code-telegram hook
-./target/release/claude-code-telegram stop
-./target/release/claude-code-telegram bot
-./target/release/claude-code-telegram status
-./target/release/claude-code-telegram signal-link  # requires --features signal
+./target/release/claude-code-telegram hook                          # PermissionRequest handler
+./target/release/claude-code-telegram stop                          # Stop handler
+./target/release/claude-code-telegram notify                        # Notification handler
+./target/release/claude-code-telegram event SessionStart            # Generic event handler
+./target/release/claude-code-telegram event PostToolUseFailure      # Generic event handler
+./target/release/claude-code-telegram bot                           # Telegram bot
+./target/release/claude-code-telegram status                        # Show config status
+./target/release/claude-code-telegram hooks-config                  # Print hooks config JSON
+./target/release/claude-code-telegram signal-link                   # requires --features signal
 ```
 
 ## Configuration
@@ -178,12 +201,27 @@ The hook loads configuration in this priority order:
   },
   "preferences": {
     "primary_messenger": "telegram",
-    "timeout_seconds": 300
+    "timeout_seconds": 300,
+    "event_filters": {
+      "SessionStart": true,
+      "SessionEnd": true,
+      "PostToolUseFailure": true,
+      "TaskCompleted": true,
+      "TeammateIdle": true,
+      "SubagentStart": false,
+      "PreToolUse": false
+    }
   }
 }
 ```
 
 Both formats are supported - the legacy format is auto-detected and converted.
+
+### Event Filters
+
+The `event_filters` preference controls which hook events send notifications.
+Events enabled by default: `SessionStart`, `SessionEnd`, `PostToolUseFailure`, `TaskCompleted`, `TeammateIdle`.
+All other events are disabled by default but can be enabled via config.
 
 ### Environment Variables (Fallback)
 

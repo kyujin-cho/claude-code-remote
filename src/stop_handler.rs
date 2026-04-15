@@ -5,15 +5,11 @@
 
 use crate::config::Config;
 use crate::error::StopError;
-use crate::messenger::telegram::TelegramMessenger;
-use crate::messenger::Messenger;
+use crate::messenger;
 use serde::Deserialize;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-
-#[cfg(feature = "discord")]
-use crate::messenger::discord::DiscordMessenger;
 
 /// Claude Code stop hook input.
 #[derive(Debug, Deserialize)]
@@ -148,64 +144,24 @@ pub async fn send_notification(config: &Config, event: &StopEvent) -> Result<(),
 
     let text = format_completion_message(config, event);
 
-    // Try Discord if configured as primary
-    #[cfg(feature = "discord")]
-    if config.primary_messenger == "discord" {
-        if let Some(ref discord_config) = config.discord {
-            if discord_config.enabled {
-                let messenger =
-                    DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
-                messenger.send_notification(&text).await.map_err(|e| {
-                    StopError::TelegramError(teloxide::RequestError::Api(
-                        teloxide::ApiError::Unknown(e.to_string()),
-                    ))
-                })?;
-                return Ok(());
-            }
-        }
-    }
+    let resolved = match messenger::resolve_messenger(config) {
+        Ok(m) => m,
+        Err(_) => return Ok(()), // No messenger configured - silently skip
+    };
 
-    // Try Telegram if configured
-    if let Some(ref telegram_config) = config.telegram {
-        let messenger = TelegramMessenger::new(&telegram_config.bot_token, telegram_config.chat_id);
-        messenger.send_notification(&text).await.map_err(|e| {
-            StopError::TelegramError(teloxide::RequestError::Api(teloxide::ApiError::Unknown(
-                e.to_string(),
-            )))
-        })?;
-        return Ok(());
-    }
+    resolved.send_notification(&text).await.map_err(|e| {
+        StopError::TelegramError(teloxide::RequestError::Api(teloxide::ApiError::Unknown(
+            e.to_string(),
+        )))
+    })?;
 
-    // Try Discord as fallback
-    #[cfg(feature = "discord")]
-    if let Some(ref discord_config) = config.discord {
-        if discord_config.enabled {
-            let messenger =
-                DiscordMessenger::new(&discord_config.bot_token, discord_config.user_id);
-            messenger.send_notification(&text).await.map_err(|e| {
-                StopError::TelegramError(teloxide::RequestError::Api(teloxide::ApiError::Unknown(
-                    e.to_string(),
-                )))
-            })?;
-            return Ok(());
-        }
-    }
-
-    // No messenger configured - silently skip
     Ok(())
-}
-
-/// Read JSON input from stdin.
-fn read_stdin() -> Result<String, io::Error> {
-    let mut buffer = String::new();
-    io::stdin().read_to_string(&mut buffer)?;
-    Ok(buffer)
 }
 
 /// Main entry point for the stop handler.
 pub async fn run() -> Result<(), StopError> {
     // Read and parse input
-    let input_str = read_stdin()?;
+    let input_str = crate::util::read_stdin()?;
     let input: StopInput = serde_json::from_str(&input_str)?;
 
     // Load config

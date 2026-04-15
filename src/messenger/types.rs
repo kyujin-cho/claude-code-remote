@@ -31,16 +31,25 @@ pub struct PermissionMessage {
     pub hostname: String,
     /// Tool input parameters
     pub tool_input: Value,
+    /// Project name extracted from cwd (if available)
+    pub project: Option<String>,
 }
 
 impl PermissionMessage {
     /// Create a new permission message.
-    pub fn new(request_id: String, tool_name: String, hostname: String, tool_input: Value) -> Self {
+    pub fn new(
+        request_id: String,
+        tool_name: String,
+        hostname: String,
+        tool_input: Value,
+        project: Option<String>,
+    ) -> Self {
         Self {
             request_id,
             tool_name,
             hostname,
             tool_input,
+            project,
         }
     }
 }
